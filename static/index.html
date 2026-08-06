@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工作台 Workbench</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 顶栏 -->
+<header id="topbar">
+  <div class="tb-left">
+    <span id="date-line" class="tb-date"></span>
+    <span id="clock" class="tb-clock"></span>
+  </div>
+  <div class="tb-right">
+    <button id="btn-update" title="检查更新" class="tb-refresh">⬆</button>
+    <button id="btn-refresh" title="刷新数据" class="tb-refresh">↻</button>
+    <div id="weather" class="tb-weather" title="点击修改城市">
+      <span id="w-icon"></span>
+      <span id="w-temp"></span>
+      <span id="w-live" class="w-live" title="当前实时温度">实时</span>
+      <span id="w-city"></span>
+    </div>
+  </div>
+</header>
+
+<div id="layout">
+  <!-- 侧栏 -->
+  <aside id="sidebar">
+    <section class="panel" id="stat-panel">
+      <h3>任务统计</h3>
+      <div id="stats" class="stats-grid"></div>
+    </section>
+
+    <section class="panel" id="pomo-panel">
+      <h3>番茄钟
+        <span class="pomo-count" id="pomo-count" title="今日完成番茄数"></span>
+      </h3>
+      <div class="pomo-time" id="pomo-time">25:00</div>
+      <div class="pomo-phase" id="pomo-phase">就绪 · 点击开始专注</div>
+      <div class="pomo-actions">
+        <button class="btn primary sm" id="pomo-start">开始</button>
+        <button class="btn ghost sm" id="pomo-skip" disabled>跳过</button>
+      </div>
+    </section>
+
+    <section class="panel" id="link-panel">
+      <h3>快捷方式
+        <button class="icon-btn add-link-btn" title="添加链接">＋</button>
+      </h3>
+      <div id="links" class="link-list"></div>
+    </section>
+
+    <section class="panel" id="note-panel">
+      <h3>便签
+        <button class="icon-btn add-note-btn" title="添加便签">＋</button>
+      </h3>
+      <div id="notes" class="note-list"></div>
+    </section>
+  </aside>
+
+  <!-- 主区 -->
+  <main id="main">
+    <div id="new-task">
+      <input id="nt-title" type="text" placeholder="添加新任务，回车创建…" maxlength="120" autocomplete="off">
+      <button id="nt-add" class="btn primary">添加</button>
+      <button id="nt-more" class="btn ghost" title="更多选项">⋯</button>
+      <div id="nt-detail" class="hidden">
+        <select id="nt-priority">
+          <option value="high">高优先级</option>
+          <option value="medium" selected>中优先级</option>
+          <option value="low">低优先级</option>
+        </select>
+        <input id="nt-due" type="date" autocomplete="off">
+        <input id="nt-tags" type="text" placeholder="标签，逗号分隔" autocomplete="off">
+        <input id="nt-desc" type="text" placeholder="描述（可选）" autocomplete="off">
+      </div>
+    </div>
+
+    <div id="lanes">
+      <div class="lane" data-status="todo">
+        <div class="lane-head">
+          <h2>待办</h2>
+          <span class="lane-count" id="cnt-todo">0</span>
+        </div>
+        <div class="lane-body" id="lane-todo"></div>
+      </div>
+      <div class="lane" data-status="doing">
+        <div class="lane-head">
+          <h2>进行中</h2>
+          <span class="lane-count" id="cnt-doing">0</span>
+        </div>
+        <div class="lane-body" id="lane-doing"></div>
+      </div>
+      <div class="lane" data-status="done">
+        <div class="lane-head">
+          <h2>已完成</h2>
+          <span class="lane-count" id="cnt-done">0</span>
+        </div>
+        <div class="lane-body" id="lane-done"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 弹窗 -->
+<div id="modal-mask" class="hidden">
+  <div id="modal" class="modal">
+    <h3 id="modal-title">标题</h3>
+    <div id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="modal-cancel">取消</button>
+      <button class="btn primary" id="modal-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

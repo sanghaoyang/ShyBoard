@@ -1,0 +1,21 @@
+# 运行时数据（含个人数据库，绝不入库）
+data/
+
+# 构建产物
+build/
+dist/
+*.spec.bak
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 本机专用（硬编码了本机路径）
+create_shortcut.ps1
+
+# 调试残留
+wx_dump.txt
+
+# 下载的 emoji 素材（可重新用 scripts/download_emoji_preview.py 生成）
+scripts/emoji_preview/
