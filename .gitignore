@@ -13,6 +13,7 @@ __pycache__/
 
 # 本机专用（硬编码了本机路径）
 create_shortcut.ps1
+create_test_shortcut.ps1
 
 # 调试残留
 wx_dump.txt
