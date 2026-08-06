@@ -407,6 +407,86 @@ body.has-weather #w-live { display: inline-block; }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* ===== 删除确认弹窗（同主题，柔和粉色） ===== */
+#confirm-mask {
+  position: fixed; inset: 0;
+  background: rgba(196, 160, 168, 0.25);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 150;
+}
+.confirm-box {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(160, 120, 130, 0.25);
+  width: 340px; max-width: 90vw;
+  padding: 24px 26px 20px;
+  text-align: center;
+  animation: confirm-in 0.2s ease;
+}
+@keyframes confirm-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.confirm-icon {
+  font-size: 34px;
+  margin-bottom: 10px;
+}
+.confirm-box h3 {
+  color: var(--primary-deep);
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.confirm-box p {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.7;
+  margin-bottom: 18px;
+  word-break: break-word;
+}
+.confirm-actions {
+  display: flex; justify-content: center; gap: 12px;
+}
+
+/* ===== 设置弹窗 ===== */
+#settings-mask {
+  position: fixed; inset: 0;
+  background: rgba(196, 160, 168, 0.25);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 140;
+}
+#settings-box { width: 400px; }
+.set-group {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 4px 14px;
+}
+.set-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 2px;
+}
+.set-info { min-width: 0; padding-right: 12px; }
+.set-name { font-size: 14px; color: var(--text); font-weight: 600; }
+.set-desc { font-size: 12px; color: var(--text-dim); margin-top: 3px; line-height: 1.5; }
+.set-divider { height: 1px; background: var(--border); margin: 0 2px; }
+
+/* 开关 */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+  position: absolute; inset: 0; cursor: pointer;
+  background: #E3D8DC; border-radius: 24px;
+  transition: background 0.25s;
+}
+.switch .slider::before {
+  content: ""; position: absolute; left: 3px; top: 3px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform 0.25s;
+}
+.switch input:checked + .slider { background: var(--primary); }
+.switch input:checked + .slider::before { transform: translateX(20px); }
+.switch input:focus-visible + .slider { box-shadow: 0 0 0 2px var(--primary-soft); }
+
 /* ===== 天气详情弹窗 ===== */
 .weather-now {
   display: flex; align-items: center; gap: 16px;

@@ -35,7 +35,7 @@ PREFERRED_PORT = 17890
 HEALTH_PATH = "/api/health"
 
 # 应用版本：发布时手动递增，与 GitHub Release tag 对应（如 v1.1.0）
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 # 占位页：窗口先显示纯色背景，避免导航前白屏
 PLACEHOLDER_HTML = (

@@ -336,14 +336,81 @@ def pomodoro_complete():
 
 # ---------------- 设置 ----------------
 
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_NAME = "Workbench"
+
+
+def _autostart_command():
+    """生成开机自启命令：打包版直接指向 exe；源码版用 pythonw 跑 app.py。
+    若进程是 --port 启动（如测试版 17891），自启命令带上该参数，避免 find_port 复用他人服务。"""
+    extra = ""
+    if "--port" in sys.argv:
+        try:
+            extra = f" --port {int(sys.argv[sys.argv.index('--port') + 1])}"
+        except (ValueError, IndexError):
+            pass
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}"{extra}'
+    pyw = sys.executable.replace("python.exe", "pythonw.exe")
+    if not os.path.exists(pyw):
+        pyw = sys.executable
+    app_py = os.path.join(BASE_DIR, "app.py")
+    return f'"{pyw}" "{app_py}"{extra}'
+
+
+@app.get("/api/settings/autostart")
+def autostart_get():
+    """查询开机自启状态：读注册表为准（settings 仅作界面记忆）。"""
+    enabled = False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            winreg.QueryValueEx(k, RUN_NAME)
+            enabled = True
+    except FileNotFoundError:
+        enabled = False
+    except OSError:
+        pass
+    return jsonify({"enabled": enabled})
+
+
+@app.post("/api/settings/autostart")
+def autostart_set():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            if enabled:
+                winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, _autostart_command())
+            else:
+                try:
+                    winreg.DeleteValue(k, RUN_NAME)
+                except FileNotFoundError:
+                    pass
+        db.set_setting("autostart", "1" if enabled else "0")
+        return jsonify({"ok": True, "enabled": enabled})
+    except OSError as e:
+        return jsonify({"error": f"设置开机自启失败：{e}"}), 500
+
+
 @app.get("/api/settings")
 def settings_get():
-    return jsonify(db.get_all_settings())
+    s = db.get_all_settings()
+    # 兜底：老库缺少新键时补默认值
+    for k, v in db.DEFAULT_SETTINGS.items():
+        s.setdefault(k, v)
+    return jsonify(s)
 
 
 @app.put("/api/settings")
 def settings_update():
     data = request.get_json(silent=True) or {}
+    # 通用设置项（布尔开关等）：confirm_delete_* / autostart
+    SIMPLE_KEYS = {"autostart", "confirm_delete_task", "confirm_delete_link", "confirm_delete_note"}
+    for k in SIMPLE_KEYS:
+        if k in data:
+            db.set_setting(k, "1" if data[k] else "0")
     # 直接给城市代码（前端从搜索结果选定）：city + city_code 一起存
     if "city_code" in data and str(data.get("city_code", "")).strip():
         code = str(data["city_code"]).strip()
@@ -361,7 +428,6 @@ def settings_update():
             db.set_setting("city", found[0]["n"])
             db.set_setting("city_code", found[0]["c"])
             return jsonify(db.get_all_settings())
-        return jsonify({"error": f"未找到城市（仅支持国内城市）"}), 404
     return jsonify(db.get_all_settings())
 
 

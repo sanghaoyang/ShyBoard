@@ -27,6 +27,82 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.add("hidden"), 2200);
 }
 
+/* ---------- 设置 ---------- */
+let SETTINGS = {};  // 从 /api/settings 加载；confirm_delete_* 存 "0"/"1"
+
+async function loadSettings() {
+  try {
+    const s = await api("/api/settings");
+    SETTINGS = s;
+    // 同步开关状态
+    $("#set-autostart").checked = s.autostart === "1";
+    $("#set-confirm-task").checked = s.confirm_delete_task !== "0";
+    $("#set-confirm-link").checked = s.confirm_delete_link !== "0";
+    $("#set-confirm-note").checked = s.confirm_delete_note !== "0";
+    // 开机自启以注册表为准（首次进入时刷新一次）
+    const a = await api("/api/settings/autostart").catch(() => null);
+    if (a && typeof a.enabled === "boolean") {
+      SETTINGS.autostart = a.enabled ? "1" : "0";
+      $("#set-autostart").checked = a.enabled;
+    }
+  } catch (e) { /* 设置加载失败不阻塞 */ }
+}
+
+function openSettings() {
+  loadSettings().then(() => {
+    $("#settings-mask").classList.remove("hidden");
+  });
+}
+
+function closeSettings() {
+  $("#settings-mask").classList.add("hidden");
+}
+
+// 开关变化 → 立即保存
+function bindSettingSwitch(id, key, isBool = true) {
+  $(id).addEventListener("change", async () => {
+    const val = $(id).checked;
+    try {
+      await api("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ [key]: isBool ? (val ? 1 : 0) : val }),
+      });
+      SETTINGS[key] = val ? "1" : "0";
+    } catch (e) {
+      toast(e.message);
+      $(id).checked = !val;
+    }
+  });
+}
+
+async function setAutostart(enabled) {
+  const res = await api("/api/settings/autostart", {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+  if (res.error) throw new Error(res.error);
+  SETTINGS.autostart = enabled ? "1" : "0";
+}
+
+$("#btn-settings").addEventListener("click", openSettings);
+$("#settings-done").addEventListener("click", closeSettings);
+$("#settings-mask").addEventListener("click", (e) => {
+  if (e.target.id === "settings-mask") closeSettings();
+});
+bindSettingSwitch("#set-confirm-task", "confirm_delete_task");
+bindSettingSwitch("#set-confirm-link", "confirm_delete_link");
+bindSettingSwitch("#set-confirm-note", "confirm_delete_note");
+$("#set-autostart").addEventListener("change", async (e) => {
+  const val = e.target.checked;
+  try {
+    await setAutostart(val);
+    toast(val ? "已开启开机自启" : "已关闭开机自启");
+  } catch (err) {
+    toast(err.message);
+    e.target.checked = !val;
+  }
+});
+
 /* ---------- 时钟 ---------- */
 function tickClock() {
   const now = new Date();
@@ -254,7 +330,9 @@ async function startTask(id) {
 }
 
 async function deleteTask(id) {
-  if (!confirm("确定删除这个任务吗？")) return;
+  if (SETTINGS.confirm_delete_task !== "0") {
+    if (!await confirmDialog("确定删除这个任务吗？", { okText: "删除", title: "删除任务" })) return;
+  }
   try { await api(`/api/tasks/${id}`, { method: "DELETE" }); toast("已删除"); }
   catch (e) { toast(e.message); }
   reloadAll();
@@ -457,7 +535,9 @@ function saveLink() {
 }
 
 async function deleteLink(id) {
-  if (!confirm("删除这个快捷方式？")) return;
+  if (SETTINGS.confirm_delete_link !== "0") {
+    if (!await confirmDialog("删除这个快捷方式？", { okText: "删除", title: "删除快捷方式" })) return;
+  }
   try { await api(`/api/links/${id}`, { method: "DELETE" }); loadLinks(); }
   catch (e) { toast(e.message); }
 }
@@ -495,7 +575,9 @@ function saveNote() {
 }
 
 async function deleteNote(id) {
-  if (!confirm("删除这条便签？")) return;
+  if (SETTINGS.confirm_delete_note !== "0") {
+    if (!await confirmDialog("删除这条便签？", { okText: "删除", title: "删除便签" })) return;
+  }
   try { await api(`/api/notes/${id}`, { method: "DELETE" }); loadNotes(); }
   catch (e) { toast(e.message); }
 }
@@ -514,6 +596,28 @@ function openModalWide() {
   noAutofill();
 }
 function closeModal() { $("#modal-mask").classList.add("hidden"); }
+
+/* 自定义确认弹窗：替代原生 confirm()（原生对话框标题显示页面 URL，样式也与主题不符） */
+function confirmDialog(message, opts = {}) {
+  const { okText = "删除", title = "确认操作", icon = "🗑️" } = opts;
+  return new Promise((resolve) => {
+    $("#confirm-title").textContent = title;
+    $("#confirm-msg").textContent = message;
+    $("#confirm-ok").textContent = okText;
+    $(".confirm-icon").textContent = icon;
+    $("#confirm-mask").classList.remove("hidden");
+    const finish = (val) => {
+      $("#confirm-mask").classList.add("hidden");
+      $("#confirm-ok").onclick = null;
+      $("#confirm-cancel").onclick = null;
+      $("#confirm-mask").onclick = null;
+      resolve(val);
+    };
+    $("#confirm-ok").onclick = () => finish(true);
+    $("#confirm-cancel").onclick = () => finish(false);
+    $("#confirm-mask").onclick = (e) => { if (e.target.id === "confirm-mask") finish(false); };
+  });
+}
 
 /* 关闭 WebView2 自动填充：输入框不再显示历史输入记录下拉框 */
 function noAutofill() {
@@ -861,6 +965,7 @@ api("/api/health").then((h) => {
 }).catch(() => {});
 loadTasks();
 loadStats();
+loadSettings();
 loadWeather();
 loadLinks();
 loadNotes();
@@ -925,7 +1030,7 @@ async function downloadUpdate() {
       }),
     });
     if (d.error) { toast(d.error); return; }
-    if (!confirm("更新已下载完成，将自动重启应用完成更新。确定？")) return;
+    if (!await confirmDialog("更新已下载完成，将自动重启应用完成更新。确定？", { okText: "更新", title: "确认更新", icon: "⬆️" })) return;
     await api("/api/update/apply", { method: "POST" });
     toast("正在应用更新…");
   } catch (e) {

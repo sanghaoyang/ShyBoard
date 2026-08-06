@@ -17,6 +17,7 @@
   <div class="tb-right">
     <button id="btn-update" title="检查更新" class="tb-refresh">⬆</button>
     <button id="btn-refresh" title="刷新数据" class="tb-refresh">↻</button>
+    <button id="btn-settings" title="设置" class="tb-refresh">⚙️</button>
     <div id="weather" class="tb-weather" title="点击修改城市">
       <span id="w-icon"></span>
       <span id="w-temp"></span>
@@ -118,6 +119,73 @@
 </div>
 
 <div id="toast" class="hidden"></div>
+
+<!-- 设置弹窗 -->
+<div id="settings-mask" class="hidden">
+  <div id="settings-box" class="modal">
+    <h3>⚙️ 设置</h3>
+    <div class="set-group">
+      <div class="set-row">
+        <div class="set-info">
+          <div class="set-name">开机自启</div>
+          <div class="set-desc">登录 Windows 后自动启动工作台</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="set-autostart">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="set-divider"></div>
+      <div class="set-info" style="margin-bottom:6px">
+        <div class="set-name">删除前确认</div>
+        <div class="set-desc">关闭后删除将直接执行，不再弹确认框</div>
+      </div>
+      <div class="set-row">
+        <div class="set-info">
+          <div class="set-name">任务</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="set-confirm-task">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="set-row">
+        <div class="set-info">
+          <div class="set-name">快捷方式</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="set-confirm-link">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="set-row">
+        <div class="set-info">
+          <div class="set-name">便签</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="set-confirm-note">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary" id="settings-done">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除/危险操作确认弹窗（独立于业务 modal，样式同主题） -->
+<div id="confirm-mask" class="hidden">
+  <div id="confirm-box" class="confirm-box">
+    <div class="confirm-icon">🗑️</div>
+    <h3 id="confirm-title">确认删除</h3>
+    <p id="confirm-msg"></p>
+    <div class="confirm-actions">
+      <button class="btn ghost" id="confirm-cancel">取消</button>
+      <button class="btn danger" id="confirm-ok">删除</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>
