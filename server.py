@@ -71,6 +71,16 @@ def update_download():
         return jsonify({"error": f"下载失败：{e}"}), 502
 
 
+@app.get("/api/update/progress")
+def update_progress():
+    """查询下载进度（流式下载时前端轮询）。"""
+    p = updater.progress()
+    if p is None:
+        return jsonify({"downloaded": 0, "total": 0, "percent": 0, "done": False, "active": False})
+    p["active"] = True
+    return jsonify(p)
+
+
 @app.post("/api/update/apply")
 def update_apply():
     """应用更新：启动 update.bat 替换文件并重启（本进程 1s 后退出）。"""

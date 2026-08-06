@@ -1020,7 +1020,17 @@ async function checkUpdate() {
 async function downloadUpdate() {
   if (!_updateInfo) return;
   closeModal();
-  toast("正在下载更新…");
+  // 打开下载进度弹窗
+  $("#modal-title").textContent = "正在下载更新";
+  $("#modal-body").innerHTML = `
+    <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px">
+      当前 v${APP_VERSION_TEXT} → 最新 ${_updateInfo.tag}
+    </div>
+    <div class="upd-bar"><div class="upd-bar-fill" id="upd-fill" style="width:0%"></div></div>
+    <div class="upd-meta" id="upd-meta">准备下载…</div>`;
+  openModal();
+  let cancelled = false;
+  let pollTimer = null;
   try {
     const d = await api("/api/update/download", {
       method: "POST",
@@ -1029,11 +1039,47 @@ async function downloadUpdate() {
         filename: _updateInfo.asset_name,
       }),
     });
-    if (d.error) { toast(d.error); return; }
-    if (!await confirmDialog("更新已下载完成，将自动重启应用完成更新。确定？", { okText: "更新", title: "确认更新", icon: "⬆️" })) return;
+    if (d.error) { closeModal(); toast(d.error); return; }
+    // 下载完成后轮询确认进度 100%（流式写盘可能略滞后）
+    await new Promise((resolve) => {
+      let tries = 0;
+      pollTimer = setInterval(async () => {
+        tries++;
+        try {
+          const p = await api("/api/update/progress");
+          if (p.done || tries > 40) { clearInterval(pollTimer); resolve(); }
+        } catch (e) { /* 继续等 */ }
+      }, 250);
+    });
+    if (cancelled) return;
+    $("#upd-fill").style.width = "100%";
+    $("#upd-meta").textContent = "下载完成 ✓";
+    const ok = await confirmDialog("更新已下载完成，将自动重启应用完成更新。确定？", { okText: "更新", title: "确认更新", icon: "⬆️" });
+    if (!ok) return;
+    closeModal();
     await api("/api/update/apply", { method: "POST" });
     toast("正在应用更新…");
   } catch (e) {
+    closeModal();
     toast("下载失败：" + (e.message || "网络问题"));
   }
 }
+
+// 下载进度轮询（下载期间每秒刷新进度条）
+setInterval(async () => {
+  const fill = $("#upd-fill");
+  const meta = $("#upd-meta");
+  if (!fill || !meta || $("#modal-title").textContent !== "正在下载更新") return;
+  try {
+    const p = await api("/api/update/progress");
+    if (p && p.percent > 0 && !p.done) {
+      const pct = Math.min(100, Math.round(p.percent));
+      fill.style.width = pct + "%";
+      const mb = (n) => (n / 1048576).toFixed(1);
+      meta.textContent = p.total ? `下载中 ${mb(p.downloaded)} / ${mb(p.total)} MB（${pct}%）` : `下载中 ${mb(p.downloaded)} MB…`;
+    } else if (p && p.done && fill.style.width !== "100%") {
+      fill.style.width = "100%";
+      meta.textContent = "下载完成 ✓";
+    }
+  } catch (e) { /* 忽略 */ }
+}, 1000);
