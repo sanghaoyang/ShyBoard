@@ -42,4 +42,18 @@ if errorlevel 1 (
 
 echo.
 echo Build OK: dist\WorkbenchInstaller-v%APP_VERSION%.exe
+
+rem 复制安装包到桌面（本地留存，避免每次重新下载）
+for /f "usebackq delims=" %%d in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do set "DESKTOP=%%d"
+if exist "%DESKTOP%" (
+    copy /Y "dist\WorkbenchInstaller-v%APP_VERSION%.exe" "%DESKTOP%\" >nul
+    if errorlevel 1 (
+        echo [WARN] Copy to desktop failed.
+    ) else (
+        echo Copied to Desktop: %DESKTOP%\WorkbenchInstaller-v%APP_VERSION%.exe
+    )
+) else (
+    echo [WARN] Desktop path not found, skip copy.
+)
+
 pause
