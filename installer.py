@@ -86,7 +86,8 @@ def check_dest_safe(dest):
     """校验目标目录是否安全。返回 (ok, error_msg)。
 
     规则：盘根目录自动修正（由 normalize_dest 处理，这里不再拦截）；
-    系统目录（Windows/Program Files/Users 等）拒绝安装。
+    系统目录（Windows/Program Files/Users 等）拒绝安装；
+    目标位置不可写（盘根/受保护目录，普通权限）拒绝安装。
     """
     norm = dest.lower().rstrip("\\/")
     if not norm:
@@ -94,11 +95,35 @@ def check_dest_safe(dest):
     # 取目标目录的第一级（在盘符之后的顶层目录名）
     parts = [p for p in norm.split("\\") if p]
     if len(parts) >= 2 and parts[1] in SYSTEM_DIRS:
-        return False, "不能安装到系统目录（Windows / Program Files / Users 等），请选择其他目录"
+        # 例外：用户自己的目录（C:\Users\<本用户名>）允许安装
+        if parts[1] == "users" and len(parts) >= 3:
+            if norm.startswith(os.environ.get("USERPROFILE", "C:\\Users\\x").lower()):
+                pass  # 允许
+            else:
+                return False, "不能安装到其他用户的目录，请选择自己的目录"
+        else:
+            return False, "不能安装到系统目录（Windows / Program Files 等），请选择其他目录"
     # 直接命中系统目录（如 C:\Windows 本身）
     if len(parts) >= 1 and parts[0] in SYSTEM_DIRS and ":" not in parts[0]:
         return False, "不能安装到系统目录，请选择其他目录"
+    # 可写性检查：目标目录本身或父目录必须可写（盘根 C:\ 等普通权限不可写）
+    if not _is_writable(dest):
+        return False, "该位置无写权限（如 C:\\ 盘根受系统保护），请选择其他目录（如 D:\\ShyBoard 或用户目录）"
     return True, ""
+
+
+def _is_writable(dest):
+    """检测 dest（或其父目录）是否可写。返回 bool。"""
+    # 目标目录已存在：直接测写
+    probe_dir = dest if os.path.isdir(dest) else os.path.dirname(dest.rstrip("\\/")) or dest
+    try:
+        test_file = os.path.join(probe_dir, ".shyboard_perm_test")
+        with open(test_file, "w") as f:
+            f.write("x")
+        os.remove(test_file)
+        return True
+    except Exception:
+        return False
 
 
 def detect_installed(dest):
