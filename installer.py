@@ -52,15 +52,17 @@ def bundled_zip():
 
 
 def normalize_dest(dest):
-    """目录规范化：盘根目录自动追加 Workbench 子目录。
+    """目录规范化：统一反斜杠 + 盘根目录自动追加 Workbench 子目录。
 
-    返回 (normalized, changed)。如 C:\\ -> C:\\Workbench。
+    返回 (normalized, changed)。如 C:\\ -> C:\\Workbench，D:/ -> D:\\Workbench。
     """
     dest = dest.strip().strip('"').strip()
     if not dest:
         return dest, False
+    # 统一分隔符为反斜杠（Windows 风格），避免 / 与 \\ 混合
+    dest = dest.replace("/", "\\")
     # 盘根目录：C:\ / C:/ / D:\
-    if len(dest) == 3 and dest[1] == ":" and dest[2] in "\\/":
+    if len(dest) == 3 and dest[1] == ":" and dest[2] == "\\":
         return os.path.join(dest, "Workbench"), True
     # 只有盘符没有斜杠：C: -> C:\Workbench
     if len(dest) == 2 and dest[1] == ":":
@@ -168,27 +170,25 @@ def install_to(dest, progress_cb=None, log_cb=None, mode="install"):
 
 
 def create_shortcut(exe_path, working_dir, lnk_path, desc):
-    """创建 .lnk 桌面快捷方式（COM WScript.Shell）。"""
-    try:
-        import pythoncom
-        from win32com.client import Dispatch
-        shell = Dispatch("WScript.Shell")
-        lnk = shell.CreateShortcut(lnk_path)
-        lnk.TargetPath = exe_path
-        lnk.WorkingDirectory = working_dir
-        lnk.Description = desc
-        lnk.Save()
-    except ImportError:
-        # 无 pywin32 时用 powershell 兜底
-        ps = (
-            "$ws = New-Object -ComObject WScript.Shell;"
-            f"$l = $ws.CreateShortcut(r'{lnk_path}');"
-            f"$l.TargetPath = r'{exe_path}';"
-            f"$l.WorkingDirectory = r'{working_dir}';"
-            f"$l.Description = r'{desc}';"
-            "$l.Save()"
-        )
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True, capture_output=True)
+    """创建 .lnk 桌面快捷方式（PowerShell + WScript.Shell，无 pywin32 依赖）。
+
+    PyInstaller onefile 里 pythoncom/win32com 常不可用，直接用 PowerShell
+    最稳。路径统一转义为 PowerShell 单引号字符串。
+    """
+    def ps_str(s):
+        # PowerShell 单引号字符串：把内部的 ' 翻倍转义
+        return "'" + s.replace("'", "''") + "'"
+
+    ps = (
+        "$ws = New-Object -ComObject WScript.Shell;"
+        f"$l = $ws.CreateShortcut({ps_str(lnk_path)});"
+        f"$l.TargetPath = {ps_str(exe_path)};"
+        f"$l.WorkingDirectory = {ps_str(working_dir)};"
+        f"$l.Description = {ps_str(desc)};"
+        "$l.Save()"
+    )
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                   check=True, capture_output=True, timeout=30)
 
 
 class InstallerApp:
