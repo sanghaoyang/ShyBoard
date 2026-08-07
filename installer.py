@@ -239,9 +239,10 @@ class InstallerApp:
         self.entry = tk.Entry(row, textvariable=self.dest_var, font=("Microsoft YaHei UI", 9),
                               bg="#FFFFFF", fg=C_TEXT, relief="solid", bd=1)
         self.entry.pack(side="left", fill="x", expand=True, ipady=3)
-        tk.Button(row, text="浏览…", command=self._browse, bg=C_MAIN, fg="#FFFFFF",
+        self.browse_btn = tk.Button(row, text="浏览…", command=self._browse, bg=C_MAIN, fg="#FFFFFF",
                   activebackground="#B08E96", activeforeground="#FFFFFF", relief="flat",
-                  font=("Microsoft YaHei UI", 9), cursor="hand2", padx=10).pack(side="left", padx=(8, 0))
+                  font=("Microsoft YaHei UI", 9), cursor="hand2", padx=10)
+        self.browse_btn.pack(side="left", padx=(8, 0))
         # 已安装检测提示（目录变化时自动刷新）
         self.detect_var = tk.StringVar(value="")
         self.detect_label = tk.Label(loc, textvariable=self.detect_var, font=("Microsoft YaHei UI", 9),
@@ -252,12 +253,14 @@ class InstallerApp:
         # 选项
         opts = tk.Frame(self.root, bg=C_BG)
         opts.pack(fill="x", padx=30, pady=4)
-        tk.Checkbutton(opts, text="创建桌面快捷方式「工作台」", variable=self.make_shortcut_var,
+        self.make_shortcut_cb = tk.Checkbutton(opts, text="创建桌面快捷方式「工作台」", variable=self.make_shortcut_var,
                        bg=C_BG, fg=C_TEXT, activebackground=C_BG, activeforeground=C_TEXT,
-                       font=("Microsoft YaHei UI", 9), selectcolor="#FFFFFF").pack(anchor="w")
-        tk.Checkbutton(opts, text="安装完成后启动工作台", variable=self.launch_var,
+                       font=("Microsoft YaHei UI", 9), selectcolor="#FFFFFF")
+        self.make_shortcut_cb.pack(anchor="w")
+        self.launch_cb = tk.Checkbutton(opts, text="安装完成后启动工作台", variable=self.launch_var,
                        bg=C_BG, fg=C_TEXT, activebackground=C_BG, activeforeground=C_TEXT,
-                       font=("Microsoft YaHei UI", 9), selectcolor="#FFFFFF").pack(anchor="w")
+                       font=("Microsoft YaHei UI", 9), selectcolor="#FFFFFF")
+        self.launch_cb.pack(anchor="w")
 
         # 进度条
         self.prog = tk.Canvas(self.root, height=10, bg=C_CARD, highlightthickness=0)
@@ -366,13 +369,26 @@ class InstallerApp:
                 self._set_progress(100)
                 if self.launch_var.get():
                     subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest)
-                messagebox.showinfo(APP_TITLE, msg, parent=self.root)
+                self.root.after(0, self._finish, msg)
             else:
                 self.status_var.set("操作失败")
                 messagebox.showerror(APP_TITLE, msg, parent=self.root)
-            self.btn.config(state="normal")
+                self.btn.config(state="normal")
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _finish(self, msg):
+        """安装/更新成功后的收尾：锁定全部输入，按钮变「完成」，点击关闭。"""
+        self.entry.config(state="disabled")
+        if hasattr(self, "browse_btn"):
+            self.browse_btn.config(state="disabled")
+        if hasattr(self, "make_shortcut_cb"):
+            self.make_shortcut_cb.config(state="disabled")
+        if hasattr(self, "launch_cb"):
+            self.launch_cb.config(state="disabled")
+        self.btn.config(text="完成", state="normal", command=self.root.destroy)
+        self.status_var.set("可以关闭窗口或点击「完成」")
+        messagebox.showinfo(APP_TITLE, msg, parent=self.root)
 
 
 def main():
