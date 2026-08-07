@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Workbench 安装器：选择目录安装（解压内嵌 zip + 创建桌面快捷方式）。
+"""Shyboard 安装器：选择目录安装（解压内嵌 zip + 创建桌面快捷方式）。
 
 独立 PyInstaller 打包（--onefile --windowed），不依赖源码与 Python 环境。
 用法：
@@ -7,7 +7,7 @@
   python installer.py --silent <dir>  # 静默安装到指定目录（测试用）
 
 打包：
-  build_installer.bat  ->  dist/WorkbenchInstaller.exe
+  build_installer.bat  ->  dist/ShyboardInstaller.exe
 """
 import os
 import shutil
@@ -21,8 +21,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import zipfile
 
-APP_NAME = "工作台 Workbench"
-APP_TITLE = "Workbench 安装程序"
+APP_NAME = "Shyboard"
+APP_TITLE = "Shyboard 安装程序"
 
 # 主题色（与工作台 UI 一致：柔和粉色系）
 C_BG = "#FBF7F8"
@@ -33,9 +33,9 @@ C_DIM = "#8A7B86"
 C_OK = "#7FB69B"
 
 # 内嵌 zip 文件名（发版时由 build_installer.bat 指定 --add-data 的 zip 名，此处保持默认）
-ZIP_NAME = "Workbench-v1.0.0.zip"
-# UI 显示的版本号：从内嵌 zip 名推导（Workbench-vX.Y.Z.zip -> X.Y.Z）
-VERSION = ZIP_NAME.split("Workbench-v")[-1].replace(".zip", "")
+ZIP_NAME = "Shyboard-v1.0.0.zip"
+# UI 显示的版本号：从内嵌 zip 名推导（Shyboard-vX.Y.Z.zip -> X.Y.Z）
+VERSION = ZIP_NAME.split("Shyboard-v")[-1].replace(".zip", "")
 
 
 def bundled_zip():
@@ -55,9 +55,9 @@ def bundled_zip():
 
 
 def normalize_dest(dest):
-    """目录规范化：统一反斜杠 + 盘根目录自动追加 Workbench 子目录。
+    """目录规范化：统一反斜杠 + 盘根目录自动追加 Shyboard 子目录。
 
-    返回 (normalized, changed)。如 C:\\ -> C:\\Workbench，D:/ -> D:\\Workbench。
+    返回 (normalized, changed)。如 C:\\ -> C:\\Shyboard，D:/ -> D:\\Shyboard。
     """
     dest = dest.strip().strip('"').strip()
     if not dest:
@@ -66,10 +66,10 @@ def normalize_dest(dest):
     dest = dest.replace("/", "\\")
     # 盘根目录：C:\ / C:/ / D:\
     if len(dest) == 3 and dest[1] == ":" and dest[2] == "\\":
-        return os.path.join(dest, "Workbench"), True
-    # 只有盘符没有斜杠：C: -> C:\Workbench
+        return os.path.join(dest, "Shyboard"), True
+    # 只有盘符没有斜杠：C: -> C:\Shyboard
     if len(dest) == 2 and dest[1] == ":":
-        return os.path.join(dest, "\\", "Workbench"), True
+        return os.path.join(dest, "\\", "Shyboard"), True
     return dest, False
 
 
@@ -102,8 +102,8 @@ def check_dest_safe(dest):
 
 
 def detect_installed(dest):
-    """检测 dest 是否已有 Workbench 安装。返回 (installed_bool, old_version)。"""
-    exe = os.path.join(dest, "Workbench.exe")
+    """检测 dest 是否已有 Shyboard 安装。返回 (installed_bool, old_version)。"""
+    exe = os.path.join(dest, "Shyboard.exe")
     if not os.path.exists(exe):
         return False, None
     # 读上次安装/更新写入的版本标记（无则视为旧版）
@@ -119,12 +119,60 @@ def detect_installed(dest):
 
 
 def kill_workbench():
-    """结束正在运行的 Workbench.exe（更新时替换 exe 需要先释放文件锁）。"""
+    """结束正在运行的 Shyboard.exe（更新时替换 exe 需要先释放文件锁）。"""
     try:
-        subprocess.run(["taskkill", "/F", "/IM", "Workbench.exe"],
+        subprocess.run(["taskkill", "/F", "/IM", "Shyboard.exe"],
                        capture_output=True, timeout=15, creationflags=_NO_WINDOW)
     except Exception:
         pass
+
+
+def write_uninstall_reg(dest):
+    """写入 HKCU 卸载注册表键，使 Shyboard 出现在 设置→应用 中。
+
+    HKCU（当前用户）无需管理员权限。UninstallString 指向卸载器。
+    """
+    try:
+        import winreg
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Shyboard"
+        exe = os.path.join(dest, "Shyboard.exe")
+        uninstaller = os.path.join(dest, "ShyboardUninstall.exe")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as k:
+            winreg.SetValueEx(k, "DisplayName", 0, winreg.REG_SZ, "Shyboard 小屋")
+            winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, VERSION)
+            winreg.SetValueEx(k, "Publisher", 0, winreg.REG_SZ, "sanghaoyang")
+            winreg.SetValueEx(k, "InstallLocation", 0, winreg.REG_SZ, dest)
+            winreg.SetValueEx(k, "DisplayIcon", 0, winreg.REG_SZ, exe)
+            winreg.SetValueEx(k, "UninstallString", 0, winreg.REG_SZ, f'"{uninstaller}"')
+            winreg.SetValueEx(k, "NoModify", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(k, "NoRepair", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(k, "EstimatedSize", 0, winreg.REG_DWORD, 32000)
+        return True
+    except Exception:
+        return False
+
+
+def remove_uninstall_reg():
+    """删除卸载注册表键（卸载时调用）。"""
+    try:
+        import winreg
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Shyboard"
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key_path)
+        return True
+    except Exception:
+        return False
+
+
+def create_startmenu_shortcut(dest):
+    """开始菜单放快捷方式（左下角搜索可搜到 Shyboard）。"""
+    try:
+        menu = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
+        os.makedirs(menu, exist_ok=True)
+        lnk = os.path.join(menu, "Shyboard.lnk")
+        create_shortcut(os.path.join(dest, "Shyboard.exe"), dest, lnk, "Shyboard 小屋")
+        return True
+    except Exception:
+        return False
 
 
 def install_to(dest, progress_cb=None, log_cb=None, mode="install"):
@@ -159,6 +207,10 @@ def install_to(dest, progress_cb=None, log_cb=None, mode="install"):
             bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "update.ps1")
             if os.path.exists(bundled):
                 shutil.copy2(bundled, os.path.join(dest, "update.ps1"))
+        # 卸载器：从安装器资源复制到目标目录（注册表 UninstallString 指向它）
+        uninstaller_src = os.path.join(getattr(sys, "_MEIPASS", ""), "ShyboardUninstall.exe")
+        if os.path.exists(uninstaller_src):
+            shutil.copy2(uninstaller_src, os.path.join(dest, "ShyboardUninstall.exe"))
         # 记录本次安装的版本（供下次检测更新）
         try:
             os.makedirs(os.path.join(dest, "data"), exist_ok=True)
@@ -220,7 +272,7 @@ class InstallerApp:
     def _build_ui(self):
         pad = {"padx": 24, "pady": 8}
         # 标题
-        tk.Label(self.root, text="工作台 Workbench", font=("Microsoft YaHei UI", 16, "bold"),
+        tk.Label(self.root, text="Shyboard", font=("Microsoft YaHei UI", 16, "bold"),
                  bg=C_BG, fg=C_MAIN).pack(pady=(24, 2))
         tk.Label(self.root, text=f"安装程序 v{VERSION} · 本地个人工作台",
                  font=("Microsoft YaHei UI", 9), bg=C_BG, fg=C_DIM).pack()
@@ -325,7 +377,7 @@ class InstallerApp:
         d = filedialog.askdirectory(title="选择安装目录", mustexist=True)
         if d:
             # normpath 统一分隔符，避免 join 产生 C:/a\b 混合路径
-            self.dest_var.set(os.path.normpath(os.path.join(d, "Workbench")))
+            self.dest_var.set(os.path.normpath(os.path.join(d, "Shyboard")))
 
     def _set_progress(self, pct):
         self.prog.coords("bar", 0, 0, int(self.prog.winfo_width() * pct / 100), 10)
@@ -363,10 +415,13 @@ class InstallerApp:
             if ok:
                 if self.make_shortcut_var.get():
                     try:
-                        lnk = os.path.join(os.path.expanduser("~"), "Desktop", "工作台.lnk")
-                        create_shortcut(os.path.join(dest, "Workbench.exe"), dest, lnk, "工作台正式版（自动更新）")
+                        lnk = os.path.join(os.path.expanduser("~"), "Desktop", "Shyboard.lnk")
+                        create_shortcut(os.path.join(dest, "Shyboard.exe"), dest, lnk, "Shyboard 小屋（自动更新）")
                     except Exception as e:
                         msg += f"（快捷方式创建失败：{e}）"
+                # 注册表卸载信息（设置→应用 可见）+ 开始菜单（搜索可见）
+                if write_uninstall_reg(dest):
+                    create_startmenu_shortcut(dest)
                 done = "更新完成 ✓" if mode == "update" else "安装完成 ✓"
                 self.status_var.set(done)
                 self._set_progress(100)
@@ -398,7 +453,7 @@ class InstallerApp:
         dest = getattr(self, "dest_installed", "")
         if self.launch_var.get() and dest:
             try:
-                subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest,
+                subprocess.Popen([os.path.join(dest, "Shyboard.exe")], cwd=dest,
                                  creationflags=_NO_WINDOW)
             except Exception:
                 pass

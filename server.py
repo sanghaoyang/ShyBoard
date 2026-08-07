@@ -353,7 +353,7 @@ def pomodoro_complete():
 # ---------------- 设置 ----------------
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-RUN_NAME = "Workbench"
+RUN_NAME = "Shyboard"
 
 
 def _autostart_command():

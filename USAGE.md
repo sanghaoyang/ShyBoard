@@ -1,4 +1,4 @@
-# 工作台 Workbench · 使用手册
+# Shyboard · 使用手册
 
 本地个人工作台：任务管理 + 天气 + 便签 + 快捷方式，支持 AI Agent 接入。
 本文按功能模块说明用法；接口文档见 README.md。
@@ -129,9 +129,9 @@ Hermes 等 Agent 可通过本地 API 直接操作工作台（只监听 127.0.0.1
 
 ## 九、分享给朋友
 
-1. 双击 `build.bat` 打包（产物在 `dist\\Workbench\\`，自动带上 `update.ps1`）
-2. 把整个 `dist\\Workbench` 文件夹发给朋友（或发 GitHub Release zip）
-3. 朋友双击 `Workbench.exe` 即用，数据存各自本地互不影响
+1. 双击 `build.bat` 打包（产物在 `dist\\Shyboard\\`，自动带上 `update.ps1`）
+2. 把整个 `dist\\Shyboard` 文件夹发给朋友（或发 GitHub Release zip）
+3. 朋友双击 `Shyboard.exe` 即用，数据存各自本地互不影响
 4. 要求：Windows 10/11（需 Edge WebView2 运行时，Win11 内置）
 
 ---

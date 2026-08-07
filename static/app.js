@@ -1,4 +1,4 @@
-/* ===== 工作台 Workbench · 前端逻辑 ===== */
+/* ===== Shyboard · 前端逻辑 ===== */
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
