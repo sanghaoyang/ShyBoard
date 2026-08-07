@@ -51,6 +51,51 @@ def bundled_zip():
     return None
 
 
+def normalize_dest(dest):
+    """目录规范化：盘根目录自动追加 Workbench 子目录。
+
+    返回 (normalized, changed)。如 C:\\ -> C:\\Workbench。
+    """
+    dest = dest.strip().strip('"').strip()
+    if not dest:
+        return dest, False
+    # 盘根目录：C:\ / C:/ / D:\
+    if len(dest) == 3 and dest[1] == ":" and dest[2] in "\\/":
+        return os.path.join(dest, "Workbench"), True
+    # 只有盘符没有斜杠：C: -> C:\Workbench
+    if len(dest) == 2 and dest[1] == ":":
+        return os.path.join(dest, "\\", "Workbench"), True
+    return dest, False
+
+
+# 系统目录黑名单（写这些位置需要管理员权限，或不该放应用数据）
+SYSTEM_DIRS = {
+    "windows", "winnt", "program files", "program files (x86)",
+    "system32", "syswow64", "users", "perflogs", "recovery",
+    "$recycle.bin", "system volume information", "boot",
+    "programdata", "temp",
+}
+
+
+def check_dest_safe(dest):
+    """校验目标目录是否安全。返回 (ok, error_msg)。
+
+    规则：盘根目录自动修正（由 normalize_dest 处理，这里不再拦截）；
+    系统目录（Windows/Program Files/Users 等）拒绝安装。
+    """
+    norm = dest.lower().rstrip("\\/")
+    if not norm:
+        return True, ""
+    # 取目标目录的第一级（在盘符之后的顶层目录名）
+    parts = [p for p in norm.split("\\") if p]
+    if len(parts) >= 2 and parts[1] in SYSTEM_DIRS:
+        return False, "不能安装到系统目录（Windows / Program Files / Users 等），请选择其他目录"
+    # 直接命中系统目录（如 C:\Windows 本身）
+    if len(parts) >= 1 and parts[0] in SYSTEM_DIRS and ":" not in parts[0]:
+        return False, "不能安装到系统目录，请选择其他目录"
+    return True, ""
+
+
 def detect_installed(dest):
     """检测 dest 是否已有 Workbench 安装。返回 (installed_bool, old_version)。"""
     exe = os.path.join(dest, "Workbench.exe")
@@ -236,12 +281,26 @@ class InstallerApp:
             self.btn.config(state="disabled")
 
     def _refresh_detect(self):
-        """目录变化时检测是否已安装，动态更新按钮文案。"""
-        dest = self.dest_var.get().strip()
-        if not dest:
+        """目录变化时规范化路径 + 检测已安装 + 安全校验，动态更新提示。"""
+        raw = self.dest_var.get().strip()
+        if not raw:
             self.detect_var.set("")
             self.btn.config(text="安装")
+            self.btn.config(state="normal")
             return
+        # 盘根目录自动追加 Workbench（同步回输入框让用户看到）
+        dest, changed = normalize_dest(raw)
+        if changed:
+            self.dest_var.set(dest)
+            return  # trace 会再次触发本函数
+        # 系统目录拒绝
+        ok, err = check_dest_safe(dest)
+        if not ok:
+            self.detect_var.set(err)
+            self.detect_label.config(fg="#C05A5A")
+            self.btn.config(text="安装", state="disabled")
+            return
+        self.detect_label.config(fg=C_OK)
         installed, old = detect_installed(dest)
         if installed:
             if old and old != VERSION:
@@ -254,6 +313,7 @@ class InstallerApp:
         else:
             self.detect_var.set("")
             self.btn.config(text="安装")
+        self.btn.config(state="normal")
 
     def _browse(self):
         d = filedialog.askdirectory(title="选择安装目录", mustexist=True)
@@ -265,9 +325,19 @@ class InstallerApp:
         self.prog.update_idletasks()
 
     def _install(self):
-        dest = self.dest_var.get().strip()
-        if not dest:
+        raw = self.dest_var.get().strip()
+        if not raw:
             messagebox.showwarning(APP_TITLE, "请先选择安装目录", parent=self.root)
+            return
+        # 规范化（盘根自动追加）+ 安全校验（最终拦截，防绕过 UI）
+        dest, changed = normalize_dest(raw)
+        if changed:
+            self.dest_var.set(dest)
+            self.status_var.set(f"已自动选择 {dest}")
+            return  # trace 触发 _refresh_detect 后用户再点一次
+        ok, err = check_dest_safe(dest)
+        if not ok:
+            messagebox.showwarning(APP_TITLE, err, parent=self.root)
             return
         installed, old = detect_installed(dest)
         mode = "update" if installed else "install"
@@ -309,7 +379,11 @@ def main():
     if "--silent" in sys.argv:
         idx = sys.argv.index("--silent")
         if idx + 1 < len(sys.argv):
-            dest = sys.argv[idx + 1]
+            dest, _ = normalize_dest(sys.argv[idx + 1])
+            ok_safe, err = check_dest_safe(dest)
+            if not ok_safe:
+                print(f"拒绝安装：{err}")
+                sys.exit(2)
             installed, _ = detect_installed(dest)
             mode = "update" if installed else "install"
             ok, msg = install_to(dest, mode=mode)
