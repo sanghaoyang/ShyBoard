@@ -27,7 +27,7 @@
 ### 源码模式（开发）
 
 ```bash
-cd <项目目录>   # 例如 D:\workbench
+cd <项目目录>   # 例如 D:\ShyBoard
 uv venv .venv --python 3.11
 uv pip install --python .venv/Scripts/python.exe flask pywebview
 start.bat          # 双击即可
@@ -110,7 +110,7 @@ due_date(YYYY-MM-DD), tags(数组或逗号字符串), source(manual/agent)
 ## 项目结构
 
 ```
-workbench/
+ShyBoard/
 ├── app.py            # 入口：pywebview 窗口 + 服务启动 + 更新自愈/启动检查
 ├── server.py         # Flask REST API + 静态页面
 ├── db.py             # SQLite 数据层

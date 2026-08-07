@@ -34,7 +34,7 @@ pythonw app.py          # 或 python app.py（会自动后台化）
 
 文档本身不会自动跑到 AI 脑子里。按你的 AI 类型选择：
 
-- **Hermes**：把 `workbench` skill（productivity 类）装到目标 profile——skill 加载即自动遵循本协议；或把 WORKFLOW.md 路径写进任务的 context
+- **Hermes**：把 `ShyBoard` skill（productivity 类）装到目标 profile——skill 加载即自动遵循本协议；或把 WORKFLOW.md 路径写进任务的 context
 - **Claude Code / Codex / Cursor 等**：把 WORKFLOW.md 放进项目根目录（如 `AGENTS.md` / `CLAUDE.md` 引用它），AI 读项目文档时自动发现
 - **通用做法**：用户在下达长期任务时，顺口说一句"按 WORKFLOW.md 记到工作台"；或把文档内容直接贴给 AI 作为上下文
 
