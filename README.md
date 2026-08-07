@@ -18,6 +18,7 @@
 - 便签：随手记录
 - 快捷方式：常用网站一键直达
 - 统计：各状态任务数、今日完成数
+- 自动更新：内置检查更新（右上角 ⬆），从 GitHub Release 一键升级，下载/安装解耦不卡死
 - Agent 接入：REST API，agent 创建的任务自动带 🤖 标记
 - 数据本地存储：data/workbench.db，纯本地、无账号
 
@@ -38,14 +39,19 @@ start.bat          # 双击即可
 - 启动优化（v2）：WebView2 与 Flask 并行启动，窗口先显示占位页、服务就绪后自动导航；
   WebView2 使用持久 profile（data/webview），二次启动复用缓存，启动更快
 
-### 打包分发（分享给朋友 / 开放测试）
+### 打包分发（正式版 / 分享给朋友）
 
-双击 `build.bat`，产物在 `dist\Workbench\`（32MB）。
+双击 `build.bat`，产物在 `dist\\Workbench\\`（约 32MB），自动带上 `update.ps1`。
 
 **使用方式：零配置，解压即用**
-1. 把整个 `dist\Workbench` 文件夹压缩发出去
+1. 把整个 `dist\\Workbench` 文件夹压缩发出去（或发 GitHub Release zip）
 2. 对方解压后，双击里面的 `Workbench.exe` 即可打开，不需要装 Python / 不需要配置任何环境
-3. 数据存在 exe 旁边的 `data\` 目录（自动创建），每个人的数据互相独立，删除文件夹即完全卸载
+3. 数据存在 exe 旁边的 `data\\` 目录（自动创建），每个人的数据互相独立，删除文件夹即完全卸载
+
+**自动更新（v1.0.0 起）**
+- 应用内置检查更新（右上角 ⬆），从 GitHub Release 拉取新版本
+- 下载与安装解耦：下载完成写 pending 缓存，重启时由独立 PowerShell helper（`update.ps1`）替换 exe 并自动重启，全程不卡死、不丢数据
+- 发布新版本：递增 `app.py` 顶部 `APP_VERSION` → 双击 `build.bat` → `python scripts/pack_release.py <版本号>` 打 zip → 发 GitHub Release（zip 里必须有 `update.ps1`）
 
 要求：Windows 10/11 64 位（需 Edge WebView2 运行时，Win11 内置，Win10 一般已随 Edge 安装；
 若提示缺少 WebView2，可到微软官网下载安装一次，之后不再需要）。
@@ -100,18 +106,22 @@ due_date(YYYY-MM-DD), tags(数组或逗号字符串), source(manual/agent)
 
 ```
 workbench/
-├── app.py            # 入口：pywebview 窗口 + 服务启动
+├── app.py            # 入口：pywebview 窗口 + 服务启动 + 更新自愈/启动检查
 ├── server.py         # Flask REST API + 静态页面
 ├── db.py             # SQLite 数据层
-├── services/weather.py  # 天气（itboy 中国天气网源 + Open-Meteo 兜底）
+├── update.ps1        # 自动更新 helper（等旧进程退出→替换 exe→重启，随包分发）
+├── services/
+│   ├── weather.py    # 天气（itboy 中国天气网源 + Open-Meteo 兜底）
+│   └── updater.py    # GitHub Release 检查/下载（5 分钟缓存防限流 + pending 缓存）
 ├── static/           # 前端（HTML/CSS/JS + cities.json 城市表）
-├── data/             # 运行时数据（workbench.db / port.txt）
+├── data/             # 运行时数据（workbench.db / port.txt / updates/）
 ├── scripts/
-│   ├── gen_cities.py # 重新生成城市表（上游 WeatherCode.txt）
-│   ├── test_api.py   # 后端自动化测试（64 项，跑独立实例）
+│   ├── pack_release.py  # 打包 dist → Workbench-<版本>.zip（相对路径，Windows 可用）
+│   ├── gen_cities.py    # 重新生成城市表（上游 WeatherCode.txt）
+│   ├── test_api.py      # 后端自动化测试（64 项，跑独立实例）
 │   └── verify_fixes.py
 ├── start.bat         # 开发启动
-├── build.bat         # 打包 exe
+├── build.bat         # 打包 exe（自动带上 update.ps1）
 └── README.md
 ```
 
