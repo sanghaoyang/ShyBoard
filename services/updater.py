@@ -280,3 +280,4 @@ def apply():
     _launch_helper(os.getpid())
     # 给响应留时间，然后退出；helper 接管替换与重启
     threading.Timer(1.0, os._exit, args=(0,)).start()
+

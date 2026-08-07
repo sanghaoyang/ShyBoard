@@ -20,3 +20,4 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(full, rel)
 
 print("zip written:", OUT, os.path.getsize(OUT), "bytes")
+

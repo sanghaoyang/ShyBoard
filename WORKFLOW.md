@@ -149,3 +149,4 @@ with urllib.request.urlopen(req) as r:
 - 判断"要不要入账"的标准见第二节，建议写进你自己 agent 的系统提示词/skill
 - 工作台侧栏会实时显示 🤖 标记的任务；时间线是 agent 行为的完整审计记录
 - 想重置演示数据：`./.venv/Scripts/python scripts/seed_demo.py`
+

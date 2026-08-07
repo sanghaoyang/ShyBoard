@@ -147,3 +147,4 @@ try {
 
 Write-Log "updater v4 done"
 exit 0
+

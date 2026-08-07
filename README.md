@@ -141,3 +141,4 @@ WORKBENCH_DB="<项目目录>\data\qa_test.db" ./.venv/Scripts/python app.py --no
 - 加功能 = 后端加路由（server.py）+ 前端加区块（static/）
 - 数据层集中在 db.py，字段变更注意迁移
 - UI 主题色在 static/style.css 顶部 :root 变量里，改色只需改一处
+

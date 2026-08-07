@@ -38,3 +38,4 @@ echo.
 echo Build OK: dist\Workbench\Workbench.exe + update.ps1
 echo Share the whole dist\Workbench folder with your friend.
 pause
+

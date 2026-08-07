@@ -188,3 +188,4 @@ def _forecast_openmeteo(lat, lon, city_name=None):
         "aqi": "", "sunrise": "", "sunset": "", "notice": "",
         "daily": daily,
     }
+

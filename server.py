@@ -464,3 +464,4 @@ def static_files(filename):
 def run_server(port):
     db.init_db()
     app.run(host="127.0.0.1", port=port, threaded=True, debug=False, use_reloader=False)
+

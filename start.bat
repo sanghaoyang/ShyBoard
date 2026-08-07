@@ -6,3 +6,4 @@ if exist ".venv\Scripts\pythonw.exe" (
 ) else (
     start "" "Workbench.exe"
 )
+

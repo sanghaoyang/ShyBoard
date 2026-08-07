@@ -383,3 +383,4 @@ def pomodoro_complete():
     set_setting("pomodoro_date", today)
     set_setting("pomodoro_count", str(count))
     return {"date": today, "count": count}
+
