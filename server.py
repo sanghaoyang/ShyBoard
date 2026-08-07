@@ -58,15 +58,17 @@ def update_check():
 
 @app.post("/api/update/download")
 def update_download():
-    """下载新版本 zip 到 data/updates/。body: {url, filename}"""
+    """下载新版本 zip 到 data/updates/ 并写 pending 缓存（不立即安装）。
+    body: {url, filename, version}"""
     data = request.get_json(silent=True) or {}
     url = str(data.get("url", "")).strip()
     filename = str(data.get("filename", "workbench.zip")).strip()
+    version = str(data.get("version", "")).strip()
     if not url.startswith("https://github.com/"):
         return jsonify({"error": "下载地址无效"}), 400
     try:
-        path = updater.download(url, filename)
-        return jsonify({"ok": True, "path": path})
+        path = updater.download(url, filename, version=version)
+        return jsonify({"ok": True, "path": path, "pending": bool(version)})
     except Exception as e:
         return jsonify({"error": f"下载失败：{e}"}), 502
 
@@ -83,7 +85,11 @@ def update_progress():
 
 @app.post("/api/update/apply")
 def update_apply():
-    """应用更新：启动 update.bat 替换文件并重启（本进程 1s 后退出）。"""
+    """应用更新：启动 PowerShell helper（update.ps1）替换文件并重启。
+
+    下载已完成（pending 缓存存在）→ helper 等本进程退出后
+    解压替换 exe/_internal 并按原端口重启（本进程 1s 后退出）。
+    """
     try:
         updater.apply()
         return jsonify({"ok": True, "message": "更新已开始，应用将自动重启"})
@@ -438,6 +444,8 @@ def settings_update():
             db.set_setting("city", found[0]["n"])
             db.set_setting("city_code", found[0]["c"])
             return jsonify(db.get_all_settings())
+        # 城市名查表失败：契约要求 404（test_api.py:193），勿删
+        return jsonify({"error": f"未知城市：{data['city']}"}), 404
     return jsonify(db.get_all_settings())
 
 
