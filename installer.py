@@ -192,7 +192,7 @@ def write_uninstall_reg(dest):
         exe = os.path.join(dest, "ShyBoard.exe")
         uninstaller = os.path.join(dest, "ShyBoardUninstall.exe")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as k:
-            winreg.SetValueEx(k, "DisplayName", 0, winreg.REG_SZ, "ShyBoard 小屋")
+            winreg.SetValueEx(k, "DisplayName", 0, winreg.REG_SZ, "ShyBoard")
             winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, VERSION)
             winreg.SetValueEx(k, "Publisher", 0, winreg.REG_SZ, "sanghaoyang")
             winreg.SetValueEx(k, "InstallLocation", 0, winreg.REG_SZ, dest)
@@ -223,7 +223,7 @@ def create_startmenu_shortcut(dest):
         menu = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
         os.makedirs(menu, exist_ok=True)
         lnk = os.path.join(menu, "ShyBoard.lnk")
-        create_shortcut(os.path.join(dest, "ShyBoard.exe"), dest, lnk, "ShyBoard 小屋")
+        create_shortcut(os.path.join(dest, "ShyBoard.exe"), dest, lnk, "ShyBoard")
         return True
     except Exception:
         return False
@@ -485,7 +485,7 @@ class InstallerApp:
                 if self.make_shortcut_var.get():
                     try:
                         lnk = os.path.join(os.path.expanduser("~"), "Desktop", "ShyBoard.lnk")
-                        create_shortcut(os.path.join(dest, "ShyBoard.exe"), dest, lnk, "ShyBoard 小屋（自动更新）")
+                        create_shortcut(os.path.join(dest, "ShyBoard.exe"), dest, lnk, "ShyBoard（自动更新）")
                     except Exception as e:
                         msg += f"（快捷方式创建失败：{e}）"
                 # 注册表卸载信息（设置→应用 可见）+ 开始菜单（搜索可见）
