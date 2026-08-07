@@ -17,8 +17,9 @@ if "%ZIPFILE%"=="" (
     pause
     exit /b 1
 )
-set "APP_VERSION=%ZIPFILE:ShyBoard-v=%"
+set "APP_VERSION=%ZIPFILE:ShyBoard-=%"
 set "APP_VERSION=%APP_VERSION:.zip=%"
+set "APP_VERSION=%APP_VERSION:v=%"
 echo APP_VERSION=%APP_VERSION% (from %ZIPFILE%)
 
 set "ZIP=dist\%ZIPFILE%"
