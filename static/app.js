@@ -30,10 +30,23 @@ function toast(msg) {
 /* ---------- 设置 ---------- */
 let SETTINGS = {};  // 从 /api/settings 加载；confirm_delete_* 存 "0"/"1"
 
+const THEMES = ["pink", "dark", "light"];
+
+/* 应用主题：body[data-theme] 驱动 CSS 变量切换；pink 是默认，去掉属性 */
+function applyTheme(theme) {
+  const t = THEMES.includes(theme) ? theme : "pink";
+  if (t === "pink") delete document.body.dataset.theme;
+  else document.body.dataset.theme = t;
+  document.querySelectorAll("#theme-picker .theme-opt").forEach((el) => {
+    el.classList.toggle("active", el.dataset.theme === t);
+  });
+}
+
 async function loadSettings() {
   try {
     const s = await api("/api/settings");
     SETTINGS = s;
+    applyTheme(s.theme || "pink");
     // 同步开关状态
     $("#set-autostart").checked = s.autostart === "1";
     $("#set-confirm-task").checked = s.confirm_delete_task !== "0";
@@ -88,6 +101,25 @@ $("#btn-settings").addEventListener("click", openSettings);
 $("#settings-done").addEventListener("click", closeSettings);
 $("#settings-mask").addEventListener("click", (e) => {
   if (e.target.id === "settings-mask") closeSettings();
+});
+// 主题切换：立即生效并保存
+$("#theme-picker").addEventListener("click", async (e) => {
+  const opt = e.target.closest(".theme-opt");
+  if (!opt) return;
+  const theme = opt.dataset.theme;
+  if (!theme || theme === (SETTINGS.theme || "pink")) return;
+  applyTheme(theme);
+  try {
+    await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ theme }),
+    });
+    SETTINGS.theme = theme;
+    toast(theme === "dark" ? "已切换到黑色主题" : theme === "light" ? "已切换到白色主题" : "已切换到粉色主题");
+  } catch (err) {
+    toast(err.message);
+    applyTheme(SETTINGS.theme || "pink");
+  }
 });
 bindSettingSwitch("#set-confirm-task", "confirm_delete_task");
 bindSettingSwitch("#set-confirm-link", "confirm_delete_link");

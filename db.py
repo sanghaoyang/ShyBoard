@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
     "city_code": "101020100",
     "lat": "31.2304",
     "lon": "121.4737",
+    "theme": "pink",
     "autostart": "0",
     "confirm_delete_task": "1",
     "confirm_delete_link": "1",

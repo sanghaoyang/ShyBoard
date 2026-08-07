@@ -427,6 +427,9 @@ def settings_update():
     for k in SIMPLE_KEYS:
         if k in data:
             db.set_setting(k, "1" if data[k] else "0")
+    # 主题色系（pink / dark / light）
+    if "theme" in data and str(data["theme"]).strip() in {"pink", "dark", "light"}:
+        db.set_setting("theme", str(data["theme"]).strip())
     # 直接给城市代码（前端从搜索结果选定）：city + city_code 一起存
     if "city_code" in data and str(data.get("city_code", "")).strip():
         code = str(data["city_code"]).strip()

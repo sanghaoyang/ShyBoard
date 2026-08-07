@@ -18,6 +18,7 @@
 - 便签：随手记录
 - 快捷方式：常用网站一键直达
 - 统计：各状态任务数、今日完成数
+- 主题：粉色 / 黑色 / 白色三套色系一键切换（设置 → 界面主题），字体颜色随主题联动保证可读性
 - 自动更新：内置检查更新（右上角 ⬆），从 GitHub Release 一键升级，下载/安装解耦不卡死
 - Agent 接入：REST API，agent 创建的任务自动带 🤖 标记
 - 数据本地存储：data/workbench.db，纯本地、无账号
@@ -145,4 +146,4 @@ WORKBENCH_DB="<项目目录>\data\qa_test.db" ./.venv/Scripts/python app.py --no
 
 - 加功能 = 后端加路由（server.py）+ 前端加区块（static/）
 - 数据层集中在 db.py，字段变更注意迁移
-- UI 主题色在 static/style.css 顶部 :root 变量里，改色只需改一处
+- UI 主题系统：static/style.css 顶部 :root 定义默认粉色主题，`body[data-theme]` 覆盖黑色/白色主题；所有颜色收敛为 CSS 变量（--primary/--heading/--text 等），改色/加主题只需改变量，硬编码颜色零残留
