@@ -27,7 +27,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 UPDATES_DIR = os.path.join(DATA_DIR, "updates")
 
 # GitHub 仓库（公开）
-REPO = "sanghaoyang/workbench"
+REPO = "sanghaoyang/ShyBoard"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 
 TIMEOUT = 10

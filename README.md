@@ -41,7 +41,7 @@ start.bat          # 双击即可
 
 ### 下载安装（普通用户）
 
-下载与更新历史见 **[Releases 页面](https://github.com/sanghaoyang/workbench/releases)**（每个版本含安装版/绿色版与更新说明）。
+下载与更新历史见 **[Releases 页面](https://github.com/sanghaoyang/ShyBoard/releases)**（每个版本含安装版/绿色版与更新说明）。
 
 - **安装版**：`ShyBoardInstaller-vX.Y.Z.exe` —— 双击运行，选择安装目录，自动创建桌面快捷方式
 - **绿色版**：`ShyBoard-vX.Y.Z.zip` —— 解压即用，双击 `ShyBoard.exe` 即可，不需要装 Python / 不需要配置任何环境
