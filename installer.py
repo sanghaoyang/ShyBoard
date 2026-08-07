@@ -51,14 +51,45 @@ def bundled_zip():
     return None
 
 
-def install_to(dest, progress_cb=None, log_cb=None):
-    """解压 zip 到 dest，返回 (ok, msg)。progress_cb(pct) 0-100。"""
+def detect_installed(dest):
+    """检测 dest 是否已有 Workbench 安装。返回 (installed_bool, old_version)。"""
+    exe = os.path.join(dest, "Workbench.exe")
+    if not os.path.exists(exe):
+        return False, None
+    # 读上次安装/更新写入的版本标记（无则视为旧版）
+    ver_file = os.path.join(dest, "data", "version.txt")
+    old = None
+    if os.path.exists(ver_file):
+        try:
+            with open(ver_file, "r", encoding="utf-8") as f:
+                old = f.read().strip()
+        except Exception:
+            old = None
+    return True, old
+
+
+def kill_workbench():
+    """结束正在运行的 Workbench.exe（更新时替换 exe 需要先释放文件锁）。"""
+    try:
+        subprocess.run(["taskkill", "/F", "/IM", "Workbench.exe"],
+                       capture_output=True, timeout=15)
+    except Exception:
+        pass
+
+
+def install_to(dest, progress_cb=None, log_cb=None, mode="install"):
+    """解压 zip 到 dest，返回 (ok, msg)。progress_cb(pct) 0-100。
+
+    mode="install"：全新安装；mode="update"：更新（保留 data\\，只换程序文件）。
+    """
     zip_path = bundled_zip()
     if not zip_path:
         return False, f"安装包内嵌资源缺失（未找到 {ZIP_NAME}）"
     if not os.path.exists(dest):
         os.makedirs(dest, exist_ok=True)
     try:
+        if mode == "update":
+            kill_workbench()
         z = zipfile.ZipFile(zip_path)
         total = len(z.namelist())
         for i, name in enumerate(z.namelist()):
@@ -78,7 +109,15 @@ def install_to(dest, progress_cb=None, log_cb=None):
             bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "update.ps1")
             if os.path.exists(bundled):
                 shutil.copy2(bundled, os.path.join(dest, "update.ps1"))
-        return True, f"安装完成到 {dest}"
+        # 记录本次安装的版本（供下次检测更新）
+        try:
+            os.makedirs(os.path.join(dest, "data"), exist_ok=True)
+            with open(os.path.join(dest, "data", "version.txt"), "w", encoding="utf-8") as f:
+                f.write(VERSION)
+        except Exception:
+            pass
+        action = "更新" if mode == "update" else "安装"
+        return True, f"{action}完成到 {dest}"
     except Exception as e:
         return False, f"安装失败：{e}"
 
@@ -158,6 +197,12 @@ class InstallerApp:
         tk.Button(row, text="浏览…", command=self._browse, bg=C_MAIN, fg="#FFFFFF",
                   activebackground="#B08E96", activeforeground="#FFFFFF", relief="flat",
                   font=("Microsoft YaHei UI", 9), cursor="hand2", padx=10).pack(side="left", padx=(8, 0))
+        # 已安装检测提示（目录变化时自动刷新）
+        self.detect_var = tk.StringVar(value="")
+        self.detect_label = tk.Label(loc, textvariable=self.detect_var, font=("Microsoft YaHei UI", 9),
+                                     bg=C_CARD, fg=C_OK)
+        self.detect_label.pack(anchor="w", padx=16, pady=(0, 8))
+        self.dest_var.trace_add("write", lambda *_: self._refresh_detect())
 
         # 选项
         opts = tk.Frame(self.root, bg=C_BG)
@@ -190,6 +235,26 @@ class InstallerApp:
             self.status_var.set("错误：未找到内嵌安装包，无法安装")
             self.btn.config(state="disabled")
 
+    def _refresh_detect(self):
+        """目录变化时检测是否已安装，动态更新按钮文案。"""
+        dest = self.dest_var.get().strip()
+        if not dest:
+            self.detect_var.set("")
+            self.btn.config(text="安装")
+            return
+        installed, old = detect_installed(dest)
+        if installed:
+            if old and old != VERSION:
+                self.detect_var.set(f"检测到已安装 v{old}，将更新到 v{VERSION}（数据保留）")
+            elif old == VERSION:
+                self.detect_var.set(f"已安装 v{VERSION}，重新覆盖（数据保留）")
+            else:
+                self.detect_var.set(f"检测到已有安装，将更新到 v{VERSION}（数据保留）")
+            self.btn.config(text="更新")
+        else:
+            self.detect_var.set("")
+            self.btn.config(text="安装")
+
     def _browse(self):
         d = filedialog.askdirectory(title="选择安装目录", mustexist=True)
         if d:
@@ -204,14 +269,20 @@ class InstallerApp:
         if not dest:
             messagebox.showwarning(APP_TITLE, "请先选择安装目录", parent=self.root)
             return
-        if os.path.exists(os.path.join(dest, "Workbench.exe")):
-            if not messagebox.askyesno(APP_TITLE, "目标目录已存在工作台，覆盖安装？", parent=self.root):
+        installed, old = detect_installed(dest)
+        mode = "update" if installed else "install"
+        if installed:
+            if old == VERSION:
+                confirm = "目标目录已安装同版本工作台，重新覆盖？\n（数据 data\\ 目录保留）"
+            else:
+                confirm = f"检测到已安装 v{old or '未知'}，将更新到 v{VERSION}？\n（数据 data\\ 目录保留）"
+            if not messagebox.askyesno(APP_TITLE, confirm, parent=self.root):
                 return
         self.btn.config(state="disabled")
-        self.status_var.set("正在安装…")
+        self.status_var.set("正在更新…" if mode == "update" else "正在安装…")
 
         def work():
-            ok, msg = install_to(dest, progress_cb=self._set_progress)
+            ok, msg = install_to(dest, progress_cb=self._set_progress, mode=mode)
             if ok:
                 if self.make_shortcut_var.get():
                     try:
@@ -219,13 +290,14 @@ class InstallerApp:
                         create_shortcut(os.path.join(dest, "Workbench.exe"), dest, lnk, "工作台正式版（自动更新）")
                     except Exception as e:
                         msg += f"（快捷方式创建失败：{e}）"
-                self.status_var.set("安装完成 ✓")
+                done = "更新完成 ✓" if mode == "update" else "安装完成 ✓"
+                self.status_var.set(done)
                 self._set_progress(100)
                 if self.launch_var.get():
                     subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest)
                 messagebox.showinfo(APP_TITLE, msg, parent=self.root)
             else:
-                self.status_var.set("安装失败")
+                self.status_var.set("操作失败")
                 messagebox.showerror(APP_TITLE, msg, parent=self.root)
             self.btn.config(state="normal")
 
@@ -237,7 +309,10 @@ def main():
     if "--silent" in sys.argv:
         idx = sys.argv.index("--silent")
         if idx + 1 < len(sys.argv):
-            ok, msg = install_to(sys.argv[idx + 1])
+            dest = sys.argv[idx + 1]
+            installed, _ = detect_installed(dest)
+            mode = "update" if installed else "install"
+            ok, msg = install_to(dest, mode=mode)
             print(msg)
             sys.exit(0 if ok else 1)
     root = tk.Tk()
