@@ -138,7 +138,7 @@ def is_admin():
 
 
 def relaunch_as_admin(dest):
-    """以管理员身份重启安装器（UAC 提权），传 --silent <dest> 直接安装。
+    """以管理员身份重启安装器（UAC 提权），--elevated 模式自动完成安装。
 
     返回 True 表示已发起提权（新进程由 UAC 决定）。
     """
@@ -146,7 +146,7 @@ def relaunch_as_admin(dest):
         exe = os.path.abspath(sys.executable)
         ps = (
             "Start-Process -Verb RunAs -FilePath "
-            f"'{exe}' -ArgumentList '--silent','{dest}'"
+            f"'{exe}' -ArgumentList '--elevated','{dest}'"
         )
         subprocess.Popen(["powershell", "-NoProfile", "-Command", ps],
                          creationflags=_NO_WINDOW)
@@ -312,6 +312,7 @@ class InstallerApp:
         self.status_var = tk.StringVar(value="准备安装")
         self.make_shortcut_var = tk.BooleanVar(value=True)
         self.launch_var = tk.BooleanVar(value=True)
+        self.auto_install = False  # --elevated 提权模式：跳过确认自动安装
 
         self._build_ui()
         self._check_zip_present()
@@ -459,6 +460,8 @@ class InstallerApp:
                     if relaunch_as_admin(dest):
                         self.status_var.set("已请求管理员权限，请在 UAC 弹窗中确认…")
                         self.btn.config(state="disabled")
+                        # 提权的新进程会接管安装，1.5 秒后关闭本窗口
+                        self.root.after(1500, self.root.destroy)
                     else:
                         messagebox.showerror(APP_TITLE, "提权失败，请右键安装器选择「以管理员身份运行」", parent=self.root)
                 return
@@ -466,7 +469,7 @@ class InstallerApp:
             return
         installed, old = detect_installed(dest)
         mode = "update" if installed else "install"
-        if installed:
+        if installed and not self.auto_install:
             if old == VERSION:
                 confirm = "目标目录已安装同版本工作台，重新覆盖？\n（数据 data\\ 目录保留）"
             else:
@@ -542,7 +545,15 @@ def main():
             print(msg)
             sys.exit(0 if ok else 1)
     root = tk.Tk()
-    InstallerApp(root)
+    app = InstallerApp(root)
+    # 提权模式（--elevated <dir>）：管理员权限的新进程，自动填入目录并开始安装
+    if "--elevated" in sys.argv:
+        idx = sys.argv.index("--elevated")
+        if idx + 1 < len(sys.argv):
+            dest, _ = normalize_dest(sys.argv[idx + 1])
+            app.auto_install = True
+            app.dest_var.set(dest)
+            root.after(300, app._install)  # 等窗口渲染后自动开始
     root.mainloop()
 
 
