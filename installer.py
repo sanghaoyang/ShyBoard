@@ -29,19 +29,22 @@ C_TEXT = "#4E4450"
 C_DIM = "#8A7B86"
 C_OK = "#7FB69B"
 
-VERSION = "1.0.0"
+# 内嵌 zip 文件名（发版时由 build_installer.bat 指定 --add-data 的 zip 名，此处保持默认）
+ZIP_NAME = "Workbench-v1.0.0.zip"
+# UI 显示的版本号：从内嵌 zip 名推导（Workbench-vX.Y.Z.zip -> X.Y.Z）
+VERSION = ZIP_NAME.split("Workbench-v")[-1].replace(".zip", "")
 
 
 def bundled_zip():
     """定位内嵌的 release zip（PyInstaller 打包后位于 _MEIPASS）。"""
     if getattr(sys, "_MEIPASS", ""):
-        return os.path.join(sys._MEIPASS, "Workbench-v1.0.0.zip")
+        return os.path.join(sys._MEIPASS, ZIP_NAME)
     # 源码模式：从仓库 dist 找（installer.py 在仓库根）
     here = os.path.dirname(os.path.abspath(__file__))
     for cand in (
-        os.path.join(here, "dist", "Workbench-v1.0.0.zip"),
-        os.path.join(here, "..", "dist", "Workbench-v1.0.0.zip"),
-        os.path.join(os.getcwd(), "Workbench-v1.0.0.zip"),
+        os.path.join(here, "dist", ZIP_NAME),
+        os.path.join(here, "..", "dist", ZIP_NAME),
+        os.path.join(os.getcwd(), ZIP_NAME),
     ):
         if os.path.exists(cand):
             return cand
@@ -52,7 +55,7 @@ def install_to(dest, progress_cb=None, log_cb=None):
     """解压 zip 到 dest，返回 (ok, msg)。progress_cb(pct) 0-100。"""
     zip_path = bundled_zip()
     if not zip_path:
-        return False, "安装包内嵌资源缺失（未找到 Workbench-v1.0.0.zip）"
+        return False, f"安装包内嵌资源缺失（未找到 {ZIP_NAME}）"
     if not os.path.exists(dest):
         os.makedirs(dest, exist_ok=True)
     try:
