@@ -288,9 +288,9 @@ class InstallerApp:
             self.btn.config(text="安装")
             self.btn.config(state="normal")
             return
-        # 盘根目录自动追加 Workbench（同步回输入框让用户看到）
+        # 规范化（盘根追加 + 分隔符统一），只要变了就写回输入框
         dest, changed = normalize_dest(raw)
-        if changed:
+        if dest != raw:
             self.dest_var.set(dest)
             return  # trace 会再次触发本函数
         # 系统目录拒绝
@@ -318,7 +318,8 @@ class InstallerApp:
     def _browse(self):
         d = filedialog.askdirectory(title="选择安装目录", mustexist=True)
         if d:
-            self.dest_var.set(os.path.join(d, "Workbench"))
+            # normpath 统一分隔符，避免 join 产生 C:/a\b 混合路径
+            self.dest_var.set(os.path.normpath(os.path.join(d, "Workbench")))
 
     def _set_progress(self, pct):
         self.prog.coords("bar", 0, 0, int(self.prog.winfo_width() * pct / 100), 10)
