@@ -39,22 +39,24 @@ start.bat          # 双击即可
 - 启动优化（v2）：WebView2 与 Flask 并行启动，窗口先显示占位页、服务就绪后自动导航；
   WebView2 使用持久 profile（data/webview），二次启动复用缓存，启动更快
 
-### 打包分发（正式版 / 分享给朋友）
+### 下载安装（普通用户）
 
-双击 `build.bat`，产物在 `dist\\Workbench\\`（约 32MB），自动带上 `update.ps1`。
+下载与更新历史见 **[Releases 页面](https://github.com/sanghaoyang/workbench/releases)**（每个版本含安装版/绿色版与更新说明）。
 
-**使用方式：零配置，解压即用**
-1. 把整个 `dist\\Workbench` 文件夹压缩发出去（或发 GitHub Release zip）
-2. 对方解压后，双击里面的 `Workbench.exe` 即可打开，不需要装 Python / 不需要配置任何环境
-3. 数据存在 exe 旁边的 `data\\` 目录（自动创建），每个人的数据互相独立，删除文件夹即完全卸载
-
-**自动更新（v1.0.0 起）**
-- 应用内置检查更新（右上角 ⬆），从 GitHub Release 拉取新版本
-- 下载与安装解耦：下载完成写 pending 缓存，重启时由独立 PowerShell helper（`update.ps1`）替换 exe 并自动重启，全程不卡死、不丢数据
-- 发布新版本：递增 `app.py` 顶部 `APP_VERSION` → 双击 `build.bat` → `python scripts/pack_release.py <版本号>` 打 zip → 发 GitHub Release（zip 里必须有 `update.ps1`）
+- **安装版**：`WorkbenchInstaller.exe` —— 双击运行，选择安装目录，自动创建桌面快捷方式
+- **绿色版**：`Workbench-vX.Y.Z.zip` —— 解压即用，双击 `Workbench.exe` 即可，不需要装 Python / 不需要配置任何环境
+- 数据存在程序目录下 `data\`（自动创建），删除文件夹即完全卸载
+- 自动更新：应用内右上角 ⬆ 从 GitHub Release 拉取新版本，下载/安装解耦不卡死
 
 要求：Windows 10/11 64 位（需 Edge WebView2 运行时，Win11 内置，Win10 一般已随 Edge 安装；
 若提示缺少 WebView2，可到微软官网下载安装一次，之后不再需要）。
+
+### 打包发布（开发者）
+
+1. 双击 `build.bat` → 产物 `dist\Workbench\`（约 32MB，自动带上 `update.ps1`）
+2. `python scripts/pack_release.py <版本号>` → 打 `Workbench-<版本号>.zip`
+3. 双击 `build_installer.bat` → 打 `WorkbenchInstaller.exe`（内嵌当前版本 zip）
+4. 递增 `app.py` 顶部 `APP_VERSION` → 提交 → 发 GitHub Release（上传 zip + 安装器）
 
 ## Agent 接入（REST API）
 
