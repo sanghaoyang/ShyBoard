@@ -367,8 +367,6 @@ class InstallerApp:
                 done = "更新完成 ✓" if mode == "update" else "安装完成 ✓"
                 self.status_var.set(done)
                 self._set_progress(100)
-                if self.launch_var.get():
-                    subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest)
                 self.root.after(0, self._finish, msg)
             else:
                 self.status_var.set("操作失败")
@@ -378,7 +376,8 @@ class InstallerApp:
         threading.Thread(target=work, daemon=True).start()
 
     def _finish(self, msg):
-        """安装/更新成功后的收尾：锁定全部输入，按钮变「完成」，点击关闭。"""
+        """安装/更新成功后的收尾：锁定全部输入，按钮变「完成」，点击后启动并关闭。"""
+        self.dest_installed = self.dest_var.get().strip()
         self.entry.config(state="disabled")
         if hasattr(self, "browse_btn"):
             self.browse_btn.config(state="disabled")
@@ -386,9 +385,20 @@ class InstallerApp:
             self.make_shortcut_cb.config(state="disabled")
         if hasattr(self, "launch_cb"):
             self.launch_cb.config(state="disabled")
-        self.btn.config(text="完成", state="normal", command=self.root.destroy)
-        self.status_var.set("可以关闭窗口或点击「完成」")
+        self.btn.config(text="完成", state="normal", command=self._on_finish_click)
+        self.status_var.set("点击「完成」关闭并启动工作台" if self.launch_var.get()
+                            else "点击「完成」关闭窗口")
         messagebox.showinfo(APP_TITLE, msg, parent=self.root)
+
+    def _on_finish_click(self):
+        """点「完成」：若勾选了启动则打开工作台，然后关闭安装器。"""
+        dest = getattr(self, "dest_installed", "")
+        if self.launch_var.get() and dest:
+            try:
+                subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest)
+            except Exception:
+                pass
+        self.root.destroy()
 
 
 def main():
