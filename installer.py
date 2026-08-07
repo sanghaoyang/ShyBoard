@@ -83,15 +83,15 @@ SYSTEM_DIRS = {
 
 
 def check_dest_safe(dest):
-    """校验目标目录是否安全。返回 (ok, error_msg)。
+    """校验目标目录是否安全。返回 (ok, error_msg, need_admin)。
 
-    规则：盘根目录自动修正（由 normalize_dest 处理，这里不再拦截）；
-    系统目录（Windows/Program Files/Users 等）拒绝安装；
-    目标位置不可写（盘根/受保护目录，普通权限）拒绝安装。
+    need_admin=True 表示：路径本身合法，但当前无写权限（如 C:\\ 盘根），
+    需要管理员权限才能安装——不应拒绝，而应提示提权重试。
     """
+    need_admin = False
     norm = dest.lower().rstrip("\\/")
     if not norm:
-        return True, ""
+        return True, "", False
     # 取目标目录的第一级（在盘符之后的顶层目录名）
     parts = [p for p in norm.split("\\") if p]
     if len(parts) >= 2 and parts[1] in SYSTEM_DIRS:
@@ -100,16 +100,18 @@ def check_dest_safe(dest):
             if norm.startswith(os.environ.get("USERPROFILE", "C:\\Users\\x").lower()):
                 pass  # 允许
             else:
-                return False, "不能安装到其他用户的目录，请选择自己的目录"
+                return False, "不能安装到其他用户的目录，请选择自己的目录", False
         else:
-            return False, "不能安装到系统目录（Windows / Program Files 等），请选择其他目录"
+            return False, "不能安装到系统目录（Windows / Program Files 等），请选择其他目录", False
     # 直接命中系统目录（如 C:\Windows 本身）
     if len(parts) >= 1 and parts[0] in SYSTEM_DIRS and ":" not in parts[0]:
-        return False, "不能安装到系统目录，请选择其他目录"
+        return False, "不能安装到系统目录，请选择其他目录", False
     # 可写性检查：目标目录本身或父目录必须可写（盘根 C:\ 等普通权限不可写）
     if not _is_writable(dest):
-        return False, "该位置无写权限（如 C:\\ 盘根受系统保护），请选择其他目录（如 D:\\ShyBoard 或用户目录）"
-    return True, ""
+        # 路径本身合法（C:\ShyBoard 没问题），只是需要管理员权限
+        need_admin = True
+        return False, f"该位置需要管理员权限（如 {dest[:3]} 盘根受系统保护）", True
+    return True, "", False
 
 
 def _is_writable(dest):
@@ -121,6 +123,33 @@ def _is_writable(dest):
         with open(test_file, "w") as f:
             f.write("x")
         os.remove(test_file)
+        return True
+    except Exception:
+        return False
+
+
+def is_admin():
+    """当前进程是否有管理员权限。"""
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def relaunch_as_admin(dest):
+    """以管理员身份重启安装器（UAC 提权），传 --silent <dest> 直接安装。
+
+    返回 True 表示已发起提权（新进程由 UAC 决定）。
+    """
+    try:
+        exe = os.path.abspath(sys.executable)
+        ps = (
+            "Start-Process -Verb RunAs -FilePath "
+            f"'{exe}' -ArgumentList '--silent','{dest}'"
+        )
+        subprocess.Popen(["powershell", "-NoProfile", "-Command", ps],
+                         creationflags=_NO_WINDOW)
         return True
     except Exception:
         return False
@@ -370,11 +399,17 @@ class InstallerApp:
             self.dest_var.set(dest)
             return  # trace 会再次触发本函数
         # 系统目录拒绝
-        ok, err = check_dest_safe(dest)
+        ok, err, need_admin = check_dest_safe(dest)
         if not ok:
-            self.detect_var.set(err)
-            self.detect_label.config(fg="#C05A5A")
-            self.btn.config(text="安装", state="disabled")
+            if need_admin:
+                # 路径合法但需要管理员权限：允许点安装，安装时提权
+                self.detect_var.set(err + "（点击「安装」将以管理员身份重试）")
+                self.detect_label.config(fg="#C05A5A")
+                self.btn.config(text="安装", state="normal")
+            else:
+                self.detect_var.set(err)
+                self.detect_label.config(fg="#C05A5A")
+                self.btn.config(text="安装", state="disabled")
             return
         self.detect_label.config(fg=C_OK)
         installed, old = detect_installed(dest)
@@ -412,8 +447,21 @@ class InstallerApp:
             self.dest_var.set(dest)
             self.status_var.set(f"已自动选择 {dest}")
             return  # trace 触发 _refresh_detect 后用户再点一次
-        ok, err = check_dest_safe(dest)
+        ok, err, need_admin = check_dest_safe(dest)
         if not ok:
+            if need_admin:
+                # 路径合法但需要管理员权限：弹窗确认后提权安装
+                if messagebox.askyesno(
+                    APP_TITLE,
+                    f"{err}\n\n是否以管理员身份重新运行安装器完成安装？",
+                    parent=self.root,
+                ):
+                    if relaunch_as_admin(dest):
+                        self.status_var.set("已请求管理员权限，请在 UAC 弹窗中确认…")
+                        self.btn.config(state="disabled")
+                    else:
+                        messagebox.showerror(APP_TITLE, "提权失败，请右键安装器选择「以管理员身份运行」", parent=self.root)
+                return
             messagebox.showwarning(APP_TITLE, err, parent=self.root)
             return
         installed, old = detect_installed(dest)
@@ -484,7 +532,7 @@ def main():
         idx = sys.argv.index("--silent")
         if idx + 1 < len(sys.argv):
             dest, _ = normalize_dest(sys.argv[idx + 1])
-            ok_safe, err = check_dest_safe(dest)
+            ok_safe, err, need_admin = check_dest_safe(dest)
             if not ok_safe:
                 print(f"拒绝安装：{err}")
                 sys.exit(2)
