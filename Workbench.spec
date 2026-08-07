@@ -5,7 +5,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('static', 'static')],
+    datas=[('static', 'static'), ('update.ps1', '.')],
     hiddenimports=['webview.platforms.edgechromium', 'webview.platforms.winforms'],
     hookspath=[],
     hooksconfig={},

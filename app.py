@@ -35,7 +35,7 @@ PREFERRED_PORT = 17890
 HEALTH_PATH = "/api/health"
 
 # 应用版本：发布时手动递增，与 GitHub Release tag 对应（如 v1.1.0）
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.3.6"
 
 # 占位页：窗口先显示纯色背景，避免导航前白屏
 PLACEHOLDER_HTML = (
@@ -203,9 +203,85 @@ def _run_window(port):
     os._exit(0)
 
 
+def _ensure_update_ps1():
+    """自愈：确保安装目录存在 update.ps1（更新机制依赖它）。
+
+    打包后 update.ps1 在 _internal（sys._MEIPASS）里。若安装目录缺失
+    （旧版升级上来，旧 update.bat 只替换 exe/_internal 不带 ps1），
+    启动时从打包资源复制一份，保证下一次自动更新可用。
+    """
+    target = os.path.join(BASE_DIR, "update.ps1")
+    if os.path.exists(target):
+        return
+    try:
+        bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "update.ps1")
+        if os.path.exists(bundled):
+            import shutil
+            shutil.copy2(bundled, target)
+    except Exception:
+        pass
+
+
+def _try_pending_update():
+    """启动早期检查：有已下载未安装的更新则弹窗确认并安装。
+
+    借鉴 Clash Verge Rev 的 try_install_on_startup：
+    - 下载完成只写 pending 缓存，不立即替换（运行中替换 exe 会锁文件）
+    - 下次启动到这里：版本更新 → 弹窗询问 → 确认则启动 PowerShell
+      helper 并退出本进程，由 helper 等本进程退出后替换重启
+    - 用户拒绝/无头模式 → 保留 pending，下次启动再问（Clash 同款行为）
+    - 返回 True 表示已启动安装流程，调用方应立即退出进程
+    """
+    try:
+        from services import updater
+    except Exception:
+        return False
+    info = updater.pending_info()
+    if not info:
+        return False
+    version = str(info.get("version", ""))
+    current = updater._version_tuple(APP_VERSION)
+    latest = updater._version_tuple(version)
+    if not latest or not current or latest <= current:
+        # pending 版本不新（或解析失败）：清理残留，正常启动
+        updater.clear_pending()
+        return False
+    # 无头模式 / QA 隔离环境：不弹窗，跳过（pending 保留，下次窗口模式再装）
+    if "--no-window" in sys.argv or os.environ.get("WORKBENCH_DB"):
+        return False
+    try:
+        import ctypes
+        MB_YESNO = 0x00000004
+        MB_ICONQUESTION = 0x00000020
+        MB_DEFBUTTON2 = 0x00000100  # 默认光标在"否"，防止误回车直接更新
+        res = ctypes.windll.user32.MessageBoxW(
+            0,
+            f"发现已下载的更新 {version}（当前 {APP_VERSION}）。\n\n"
+            "是否现在重启并完成更新？",
+            "Workbench 更新",
+            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2,
+        )
+        if res != 6:  # IDYES
+            return False
+    except Exception:
+        return False
+    try:
+        updater.apply()
+        return True
+    except Exception:
+        # helper 启动失败不阻塞正常启动（pending 保留，可下次再试）
+        return False
+
+
 def main():
     _hide_console()
     _detach_if_console()
+    # 自愈：确保 update.ps1 存在（旧版升级上来时补装）
+    _ensure_update_ps1()
+    # 启动早期：检查已下载未安装的更新（在 GUI/服务启动之前）
+    if _try_pending_update():
+        os._exit(0)
+
     no_window = "--no-window" in sys.argv
     explicit_port = _parse_port()
 

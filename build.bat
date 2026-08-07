@@ -16,6 +16,7 @@ if errorlevel 1 (
 
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --name Workbench ^
   --add-data "static;static" ^
+  --add-data "update.ps1;." ^
   --hidden-import webview.platforms.edgechromium ^
   --hidden-import webview.platforms.winforms ^
   app.py
@@ -26,7 +27,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+copy /Y update.ps1 dist\Workbench\update.ps1 >nul
+if errorlevel 1 (
+    echo [ERROR] Failed to copy update.ps1.
+    pause
+    exit /b 1
+)
+
 echo.
-echo Build OK: dist\Workbench\Workbench.exe
+echo Build OK: dist\Workbench\Workbench.exe + update.ps1
 echo Share the whole dist\Workbench folder with your friend.
 pause

@@ -583,10 +583,10 @@ async function deleteNote(id) {
 }
 
 /* ---------- 弹窗 ---------- */
-function openModal() {
+function openModal(showActions = true) {
   $("#modal-mask").classList.remove("hidden");
   $("#modal").classList.remove("wide");
-  $("#modal > .modal-actions").style.display = "flex";
+  $("#modal > .modal-actions").style.display = showActions ? "flex" : "none";
   noAutofill();
 }
 function openModalWide() {
@@ -1008,7 +1008,7 @@ async function checkUpdate() {
         <button class="btn ghost" onclick="closeModal()">稍后</button>
         <button class="btn primary" onclick="downloadUpdate()">下载并更新</button>
       </div>`;
-    openModal();
+    openModal(false);  // body 已自带按钮，隐藏底部"取消/确定"
   } catch (e) {
     toast("检查更新失败：" + (e.message || "网络问题"));
   } finally {
@@ -1020,7 +1020,7 @@ async function checkUpdate() {
 async function downloadUpdate() {
   if (!_updateInfo) return;
   closeModal();
-  // 打开下载进度弹窗
+  // 打开下载进度弹窗（无底部按钮，遮罩点击可关闭）
   $("#modal-title").textContent = "正在下载更新";
   $("#modal-body").innerHTML = `
     <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px">
@@ -1028,7 +1028,7 @@ async function downloadUpdate() {
     </div>
     <div class="upd-bar"><div class="upd-bar-fill" id="upd-fill" style="width:0%"></div></div>
     <div class="upd-meta" id="upd-meta">准备下载…</div>`;
-  openModal();
+  openModal(false);
   let cancelled = false;
   let pollTimer = null;
   try {
@@ -1037,6 +1037,7 @@ async function downloadUpdate() {
       body: JSON.stringify({
         url: _updateInfo.download_url,
         filename: _updateInfo.asset_name,
+        version: _updateInfo.tag,
       }),
     });
     if (d.error) { closeModal(); toast(d.error); return; }
@@ -1054,8 +1055,8 @@ async function downloadUpdate() {
     if (cancelled) return;
     $("#upd-fill").style.width = "100%";
     $("#upd-meta").textContent = "下载完成 ✓";
-    const ok = await confirmDialog("更新已下载完成，将自动重启应用完成更新。确定？", { okText: "更新", title: "确认更新", icon: "⬆️" });
-    if (!ok) return;
+    // 用户已点过"下载并更新"，下载完直接应用（不再二次确认）
+    await new Promise((r) => setTimeout(r, 600));  // 让"下载完成 ✓"停留一瞬
     closeModal();
     await api("/api/update/apply", { method: "POST" });
     toast("正在应用更新…");
