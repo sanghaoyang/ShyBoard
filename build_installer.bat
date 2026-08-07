@@ -31,6 +31,7 @@ if not exist "%ZIP%" (
 rem 1) 打包卸载器（onefile, windowed，无额外资源）
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name "ShyBoardUninstall" ^
+  --icon "assets\ShyBoard.ico" ^
   uninstaller.py
 if errorlevel 1 (
     echo [ERROR] Uninstaller build failed.
@@ -41,6 +42,7 @@ if errorlevel 1 (
 rem 2) 打包安装器（内嵌 zip + 卸载器）
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name "ShyBoardInstaller-v%APP_VERSION%" ^
+  --icon "assets\ShyBoard.ico" ^
   --add-data "%ZIP%;." ^
   --add-data "dist\ShyBoardUninstall.exe;." ^
   --hidden-import win32com.client ^

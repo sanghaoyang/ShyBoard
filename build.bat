@@ -15,6 +15,7 @@ if errorlevel 1 (
 )
 
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --name ShyBoard ^
+  --icon "assets\ShyBoard.ico" ^
   --add-data "static;static" ^
   --add-data "update.ps1;." ^
   --hidden-import webview.platforms.edgechromium ^
