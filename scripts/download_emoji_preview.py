@@ -175,4 +175,3 @@ td {{ border:1px solid #E8DDE0; padding:10px; text-align:center; width:120px; }}
 
 if __name__ == "__main__":
     main()
-

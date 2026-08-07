@@ -148,4 +148,3 @@ def fetch_favicon(url):
         pass
 
     return None
-

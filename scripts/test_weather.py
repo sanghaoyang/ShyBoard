@@ -25,4 +25,3 @@ print("天气:", d.get("city"), d.get("temp"), d.get("desc"))
 # 4. 切回上海
 r = client.put("/api/settings", json={"city_code": "101020100", "city": "上海"})
 print("PUT 上海 ->", r.status_code, r.get_json())
-

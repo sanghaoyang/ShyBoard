@@ -39,4 +39,3 @@ echo.
 echo Build OK: dist\ShyBoard\ShyBoard.exe + update.ps1
 echo Share the whole dist\ShyBoard folder with your friend.
 pause
-

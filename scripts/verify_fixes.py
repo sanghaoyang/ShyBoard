@@ -26,4 +26,3 @@ print("正常补全:", s, d.get("url"), d.get("name"))
 # 清理
 for t in d if False else []:
     pass
-
