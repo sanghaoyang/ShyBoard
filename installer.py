@@ -12,6 +12,9 @@
 import os
 import shutil
 import subprocess
+
+# Windows 下子进程不创建控制台窗口（避免安装时闪现 cmd/PS 黑窗）
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 import sys
 import threading
 import tkinter as tk
@@ -119,7 +122,7 @@ def kill_workbench():
     """结束正在运行的 Workbench.exe（更新时替换 exe 需要先释放文件锁）。"""
     try:
         subprocess.run(["taskkill", "/F", "/IM", "Workbench.exe"],
-                       capture_output=True, timeout=15)
+                       capture_output=True, timeout=15, creationflags=_NO_WINDOW)
     except Exception:
         pass
 
@@ -188,7 +191,7 @@ def create_shortcut(exe_path, working_dir, lnk_path, desc):
         "$l.Save()"
     )
     subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                   check=True, capture_output=True, timeout=30)
+                   check=True, capture_output=True, timeout=30, creationflags=_NO_WINDOW)
 
 
 class InstallerApp:
@@ -395,7 +398,8 @@ class InstallerApp:
         dest = getattr(self, "dest_installed", "")
         if self.launch_var.get() and dest:
             try:
-                subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest)
+                subprocess.Popen([os.path.join(dest, "Workbench.exe")], cwd=dest,
+                                 creationflags=_NO_WINDOW)
             except Exception:
                 pass
         self.root.destroy()
