@@ -16,7 +16,7 @@ assert ok
 
 print("=== 2. 验证注册表可读（模拟设置→应用可见）===")
 import winreg
-key_path = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Shyboard"
+key_path = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ShyBoard"
 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as k:
     for name in ("DisplayName", "DisplayVersion", "InstallLocation", "UninstallString"):
         val, _ = winreg.QueryValueEx(k, name)
@@ -27,11 +27,11 @@ print("   [PASS] 注册表键完整")
 print("=== 3. 开始菜单快捷方式（左下角搜索可见）===")
 ok = create_startmenu_shortcut(dest)
 menu = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
-lnk = os.path.join(menu, "Shyboard.lnk")
+lnk = os.path.join(menu, "ShyBoard.lnk")
 print(f"[{'PASS' if ok and os.path.exists(lnk) else 'FAIL'}] 开始菜单: {lnk}")
 
 print("=== 4. 卸载器 --silent（删文件+快捷方式+注册表）===")
-ret = os.system(r'"C:\tools\shy_test\ShyboardUninstall.exe" --silent')
+ret = os.system(r'"C:\tools\shy_test\ShyBoardUninstall.exe" --silent')
 print(f"   uninstaller exit = {ret} (0=成功)")
 try:
     winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path)

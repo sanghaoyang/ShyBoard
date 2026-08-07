@@ -11,15 +11,15 @@ from installer import normalize_dest
 print("=== 模拟浏览对话框返回的路径（模拟 Windows 对话框可能返回正斜杠）===")
 cases = [
     # (对话框返回, 期望输入框最终显示)
-    ("C:/tools/workbench", "C:\\tools\\workbench\\Shyboard"),
-    ("C:\\tools", "C:\\tools\\Shyboard"),
-    ("D:/", "D:\\Shyboard"),
-    ("C:", "C:Shyboard"),  # 理论场景：对话框不会返回裸盘符；C:Shyboard 是相对盘符路径
-    ("E:/Apps", "E:\\Apps\\Shyboard"),
+    ("C:/tools/workbench", "C:\\tools\\workbench\\ShyBoard"),
+    ("C:\\tools", "C:\\tools\\ShyBoard"),
+    ("D:/", "D:\\ShyBoard"),
+    ("C:", "C:ShyBoard"),  # 理论场景：对话框不会返回裸盘符；C:ShyBoard 是相对盘符路径
+    ("E:/Apps", "E:\\Apps\\ShyBoard"),
 ]
 ok = True
 for dlg, exp in cases:
-    joined = os.path.normpath(os.path.join(dlg, "Shyboard"))
+    joined = os.path.normpath(os.path.join(dlg, "ShyBoard"))
     # 模拟 _refresh_detect 的写回判断
     norm, _ = normalize_dest(joined)
     final = norm if norm != joined else joined

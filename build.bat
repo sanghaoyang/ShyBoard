@@ -1,5 +1,5 @@
 @echo off
-rem Build Shyboard.exe with PyInstaller (for sharing with friends)
+rem Build ShyBoard.exe with PyInstaller (for sharing with friends)
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
@@ -14,7 +14,7 @@ if errorlevel 1 (
     uv pip install --python .venv/Scripts/python.exe pyinstaller
 )
 
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --name Shyboard ^
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --name ShyBoard ^
   --add-data "static;static" ^
   --add-data "update.ps1;." ^
   --hidden-import webview.platforms.edgechromium ^
@@ -27,7 +27,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-copy /Y update.ps1 dist\Shyboard\update.ps1 >nul
+copy /Y update.ps1 dist\ShyBoard\update.ps1 >nul
 if errorlevel 1 (
     echo [ERROR] Failed to copy update.ps1.
     pause
@@ -35,7 +35,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Build OK: dist\Shyboard\Shyboard.exe + update.ps1
-echo Share the whole dist\Shyboard folder with your friend.
+echo Build OK: dist\ShyBoard\ShyBoard.exe + update.ps1
+echo Share the whole dist\ShyBoard folder with your friend.
 pause
 

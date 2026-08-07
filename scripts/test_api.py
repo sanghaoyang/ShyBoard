@@ -243,7 +243,7 @@ for path, expect in [("/", 200), ("/style.css", 200), ("/app.js", 200),
     s, body = req_raw("GET", path)
     check(f"GET {path} -> {expect}", s == expect, f"got {s}")
 s, body = req_raw("GET", "/")
-check("首页含 title", b"Shyboard" in body, "body 无 Shyboard")
+check("首页含 title", b"ShyBoard" in body, "body 无 ShyBoard")
 s, body = req_raw("GET", "/cities.json")
 check("cities.json 是合法 JSON", s == 200, f"got {s}")
 

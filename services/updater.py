@@ -34,7 +34,7 @@ TIMEOUT = 10
 
 
 def _fetch(url, binary=False):
-    req = urllib.request.Request(url, headers={"User-Agent": "Shyboard-Updater"})
+    req = urllib.request.Request(url, headers={"User-Agent": "ShyBoard-Updater"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return resp.read() if binary else resp.read().decode("utf-8")
 
@@ -140,7 +140,7 @@ def download(url, filename, version=""):
             pass
     dest = os.path.join(UPDATES_DIR, filename)
     PROGRESS = os.path.join(UPDATES_DIR, "progress.json")
-    req = urllib.request.Request(url, headers={"User-Agent": "Shyboard-Updater"})
+    req = urllib.request.Request(url, headers={"User-Agent": "ShyBoard-Updater"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         total = int(resp.headers.get("Content-Length") or 0)
         downloaded = 0

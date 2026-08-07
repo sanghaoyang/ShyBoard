@@ -1,4 +1,4 @@
-# Shyboard · 长期任务工作流协议（Agent 接入标准）
+# ShyBoard · 长期任务工作流协议（Agent 接入标准）
 
 > 目的：让任何 AI Agent（Hermes / Claude / 其他）都能把"CLI 下达的长期任务"
 > 自动纳入工作台管理——创建、更新进展、改状态，全程可追溯。
@@ -8,7 +8,7 @@
 
 ## 一、前提
 
-工作台服务在运行（双击 Shyboard.exe 或 `pythonw app.py`），监听 127.0.0.1。
+工作台服务在运行（双击 ShyBoard.exe 或 `pythonw app.py`），监听 127.0.0.1。
 实际端口写在 `data/port.txt`（默认 17890）。
 
 ```
@@ -25,7 +25,7 @@ curl -s http://127.0.0.1:17890/api/health
 服务没起来 → 先启动（工作台目录下）：
 
 ```bash
-# 打包版：双击 Shyboard.exe
+# 打包版：双击 ShyBoard.exe
 # 源码版：
 pythonw app.py          # 或 python app.py（会自动后台化）
 ```

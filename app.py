@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Shyboard 入口。
+"""ShyBoard 入口。
 
 用法:
   python app.py            # 打开桌面窗口
@@ -181,7 +181,7 @@ def _run_window(port):
     import webview
 
     window = webview.create_window(
-        "Shyboard",
+        "ShyBoard",
         html=PLACEHOLDER_HTML,
         width=1180,
         height=780,
@@ -258,7 +258,7 @@ def _try_pending_update():
             0,
             f"发现已下载的更新 {version}（当前 {APP_VERSION}）。\n\n"
             "是否现在重启并完成更新？",
-            "Shyboard 更新",
+            "ShyBoard 更新",
             MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2,
         )
         if res != 6:  # IDYES

@@ -11,12 +11,12 @@ from installer import normalize_dest, create_shortcut
 
 print("=== 1. 路径规范化测试 ===")
 cases = [
-    ("D:/", "D:\\Shyboard"),
+    ("D:/", "D:\\ShyBoard"),
     ("D:/Tools", "D:\\Tools"),
-    ("C:\\", "C:\\Shyboard"),
-    ("C:\\Shyboard", "C:\\Shyboard"),
+    ("C:\\", "C:\\ShyBoard"),
+    ("C:\\ShyBoard", "C:\\ShyBoard"),
     ("D:/Tools/WB", "D:\\Tools\\WB"),
-    ("C:Shyboard", "C:Shyboard"),  # C:Shyboard 是相对盘符路径（当前目录下），不修正
+    ("C:ShyBoard", "C:ShyBoard"),  # C:ShyBoard 是相对盘符路径（当前目录下），不修正
 ]
 ok = True
 for inp, exp in cases:
@@ -30,7 +30,7 @@ print("=== 2. PowerShell 创建快捷方式测试（真实桌面）===")
 try:
     test_dir = r"C:\tools\inst_test"
     os.makedirs(test_dir, exist_ok=True)
-    exe = os.path.join(test_dir, "Shyboard.exe")
+    exe = os.path.join(test_dir, "ShyBoard.exe")
     with open(exe, "w") as f:
         f.write("test")
     lnk = os.path.join(os.path.expanduser("~"), "Desktop", "__inst_test_workbench.lnk")

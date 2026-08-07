@@ -1,4 +1,4 @@
-# Shyboard
+# ShyBoard
 
 一个简单好用的本地个人工作台：任务管理（待办 / 进行中 / 已完成）+ 天气 + 便签 + 快捷方式 + 番茄钟。
 纯本地运行，数据存在你自己的电脑上，无需注册、无广告、无网络依赖（天气除外）。
@@ -43,8 +43,8 @@ start.bat          # 双击即可
 
 下载与更新历史见 **[Releases 页面](https://github.com/sanghaoyang/workbench/releases)**（每个版本含安装版/绿色版与更新说明）。
 
-- **安装版**：`ShyboardInstaller-vX.Y.Z.exe` —— 双击运行，选择安装目录，自动创建桌面快捷方式
-- **绿色版**：`Shyboard-vX.Y.Z.zip` —— 解压即用，双击 `Shyboard.exe` 即可，不需要装 Python / 不需要配置任何环境
+- **安装版**：`ShyBoardInstaller-vX.Y.Z.exe` —— 双击运行，选择安装目录，自动创建桌面快捷方式
+- **绿色版**：`ShyBoard-vX.Y.Z.zip` —— 解压即用，双击 `ShyBoard.exe` 即可，不需要装 Python / 不需要配置任何环境
 - 数据存在程序目录下 `data\`（自动创建），删除文件夹即完全卸载
 - 自动更新：应用内右上角 ⬆ 从 GitHub Release 拉取新版本，下载/安装解耦不卡死
 
@@ -56,9 +56,9 @@ start.bat          # 双击即可
 
 ### 打包发布（开发者）
 
-1. 双击 `build.bat` → 产物 `dist\Shyboard\`（约 32MB，自动带上 `update.ps1`）
-2. `python scripts/pack_release.py <版本号>` → 打 `Shyboard-<版本号>.zip`
-3. 双击 `build_installer.bat` → 打 `ShyboardInstaller-v<版本号>.exe`（内嵌当前版本 zip，版本号自动读取）
+1. 双击 `build.bat` → 产物 `dist\ShyBoard\`（约 32MB，自动带上 `update.ps1`）
+2. `python scripts/pack_release.py <版本号>` → 打 `ShyBoard-<版本号>.zip`
+3. 双击 `build_installer.bat` → 打 `ShyBoardInstaller-v<版本号>.exe`（内嵌当前版本 zip，版本号自动读取）
 4. 递增 `app.py` 顶部 `APP_VERSION` → 提交 → 发 GitHub Release（上传 zip + 安装器）
 
 ## Agent 接入（REST API）
@@ -121,7 +121,7 @@ workbench/
 ├── static/           # 前端（HTML/CSS/JS + cities.json 城市表）
 ├── data/             # 运行时数据（workbench.db / port.txt / updates/）
 ├── scripts/
-│   ├── pack_release.py  # 打包 dist → Shyboard-<版本>.zip（相对路径，Windows 可用）
+│   ├── pack_release.py  # 打包 dist → ShyBoard-<版本>.zip（相对路径，Windows 可用）
 │   ├── gen_cities.py    # 重新生成城市表（上游 WeatherCode.txt）
 │   ├── test_api.py      # 后端自动化测试（64 项，跑独立实例）
 │   └── verify_fixes.py

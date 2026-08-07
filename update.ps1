@@ -1,5 +1,5 @@
 # ============================================================
-#  Shyboard Updater v4 (PowerShell) - Clash Verge Rev style
+#  ShyBoard Updater v4 (PowerShell) - Clash Verge Rev style
 #  All comments ASCII only (PS 5.1 parses .ps1 with ANSI/GBK
 #  unless BOM; Chinese comments would garble the script).
 #
@@ -86,9 +86,9 @@ if (Test-Path $Tmp) { Remove-Item -Recurse -Force $Tmp }
 New-Item -ItemType Directory -Path $Tmp | Out-Null
 Write-Log "extracting $zipName ..."
 Expand-Archive -Path $zipPath -DestinationPath $Tmp -Force
-$srcExe = Join-Path $Tmp "Shyboard.exe"
+$srcExe = Join-Path $Tmp "ShyBoard.exe"
 if (-not (Test-Path $srcExe)) {
-    Write-Log "FATAL: extracted zip has no Shyboard.exe"
+    Write-Log "FATAL: extracted zip has no ShyBoard.exe"
     Remove-Item -Recurse -Force $Tmp
     exit 1
 }
@@ -96,7 +96,7 @@ $srcSize = (Get-Item $srcExe).Length
 Write-Log "extract OK, src exe size=$srcSize"
 
 # ---- 4. replace exe (with size verification) ----
-$exe = Join-Path $Base "Shyboard.exe"
+$exe = Join-Path $Base "ShyBoard.exe"
 Remove-Item $exe -Force -ErrorAction SilentlyContinue
 Copy-Item $srcExe $exe -Force
 $newSize = (Get-Item $exe).Length
@@ -138,8 +138,8 @@ if (Test-Path $portFile) {
     }
 }
 try {
-    Start-Process -FilePath (Join-Path $Base "Shyboard.exe") -ArgumentList $restartArgs -WorkingDirectory $Base
-    Write-Log "restarted Shyboard"
+    Start-Process -FilePath (Join-Path $Base "ShyBoard.exe") -ArgumentList $restartArgs -WorkingDirectory $Base
+    Write-Log "restarted ShyBoard"
 } catch {
     Write-Log "FATAL: restart failed: $_"
     exit 1
