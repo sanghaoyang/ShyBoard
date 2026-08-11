@@ -30,7 +30,7 @@ function toast(msg) {
 /* ---------- 设置 ---------- */
 let SETTINGS = {};  // 从 /api/settings 加载；confirm_delete_* 存 "0"/"1"
 
-const THEMES = ["pink", "dark", "light"];
+const THEMES = ["pink", "dark", "light", "orange", "green"];
 
 /* 应用主题：body[data-theme] 驱动 CSS 变量切换；pink 是默认，去掉属性 */
 function applyTheme(theme) {
@@ -115,7 +115,7 @@ $("#theme-picker").addEventListener("click", async (e) => {
       body: JSON.stringify({ theme }),
     });
     SETTINGS.theme = theme;
-    toast(theme === "dark" ? "已切换到黑色主题" : theme === "light" ? "已切换到白色主题" : "已切换到粉色主题");
+    toast(theme === "dark" ? "已切换到黑色主题" : theme === "light" ? "已切换到白色主题" : theme === "orange" ? "已切换到橙色主题" : theme === "green" ? "已切换到绿色主题" : "已切换到粉色主题");
   } catch (err) {
     toast(err.message);
     applyTheme(SETTINGS.theme || "pink");
