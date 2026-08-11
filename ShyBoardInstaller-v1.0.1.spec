@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['app.py'],
+    ['installer.py'],
     pathex=[],
     binaries=[],
-    datas=[('static', 'static'), ('update.ps1', '.')],
-    hiddenimports=['webview.platforms.edgechromium', 'webview.platforms.winforms'],
+    datas=[('dist\\ShyBoard-1.0.1.zip', '.'), ('dist\\ShyBoardUninstall.exe', '.')],
+    hiddenimports=['win32com.client'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -19,13 +19,16 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
-    name='ShyBoard',
+    name='ShyBoardInstaller-v1.0.1',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -33,13 +36,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['assets\\ShyBoard.ico'],
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='ShyBoard',
 )

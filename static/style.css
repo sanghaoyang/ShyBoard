@@ -33,32 +33,32 @@
   --chg-new-body-bg: #FAFDFA;
 }
 
-/* ===== 黑色主题（深色） ===== */
+/* ===== 黑色主题（深色·冷调紫罗兰） ===== */
 body[data-theme="dark"] {
-  --primary: #D6A2B0;
-  --primary-deep: #E0B3BF;
-  --primary-soft: #3A3036;
-  --heading: #F0E6EA;
-  --bg: #201C1F;
-  --card: #2A2529;
-  --text: #EDE6EA;
-  --text-dim: #A0939A;
-  --border: #3B3439;
+  --primary: #A99BC9;
+  --primary-deep: #B9ACD8;
+  --primary-soft: #3A3448;
+  --heading: #EDE7F5;
+  --bg: #1E1B24;
+  --card: #282430;
+  --text: #E4DEEA;
+  --text-dim: #A79EB4;
+  --border: #3D3749;
   --high: #E58F8F;
   --medium: #DDB47F;
   --low: #93C4A3;
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-  --on-primary: #2A2529;
-  --topbar-grad: linear-gradient(180deg, #262126, #221D21);
+  --on-primary: #1E1B24;
+  --topbar-grad: linear-gradient(180deg, #26212F, #211D29);
   --mask: rgba(0, 0, 0, 0.55);
   --modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   --tl-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
-  --switch-off: #4A4248;
+  --switch-off: #4A4258;
   --danger-hover: #3A2A2C;
-  --agent-bg: #2E3242;      --agent-text: #93A5CC;
+  --agent-bg: #2E3145;      --agent-text: #9AA8D0;
   --done-bg: #28352E;       --done-text: #7FB893;
   --overdue-bg: #3A2A2A;
-  --toast-bg: #7E5C66;
+  --toast-bg: #6E6490;
   --tl-old: #E08A8A;        --tl-new: #7FB893;
   --chg-old-head-bg: #3A2A2C; --chg-old-head-text: #E08A8A;
   --chg-new-head-bg: #28352E; --chg-new-head-text: #7FB893;
@@ -66,23 +66,23 @@ body[data-theme="dark"] {
   --chg-new-body-bg: #253029;
 }
 
-/* ===== 白色主题（浅色） ===== */
+/* ===== 白色主题（浅色·暖玫瑰棕） ===== */
 body[data-theme="light"] {
-  --primary: #B48D97;
-  --primary-deep: #9C7480;
-  --primary-soft: #F3EAEC;
-  --heading: #4A4046;
+  --primary: #B0858F;
+  --primary-deep: #9A6E78;
+  --primary-soft: #F3E8EA;
+  --heading: #3F383C;
   --bg: #FFFFFF;
   --card: #FCFCFC;
-  --text: #3D3A3E;
-  --text-dim: #9E949A;
-  --border: #EFE9EC;
+  --text: #3F383C;
+  --text-dim: #9A8E92;
+  --border: #EDE6E9;
   --high: #E08A8A;
   --medium: #D9B07A;
   --low: #8FBF9F;
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
   --on-primary: #fff;
-  --topbar-grad: linear-gradient(180deg, #FFFFFF, #FDF9FA);
+  --topbar-grad: linear-gradient(180deg, #FFFFFF, #FCF7F8);
   --mask: rgba(120, 100, 110, 0.18);
   --modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
   --tl-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
@@ -280,16 +280,16 @@ body.has-weather #w-live { display: inline-block; }
 }
 .btn.primary { background: var(--primary); color: var(--on-primary); }
 .btn.primary:hover { background: var(--primary-deep); }
-.btn.ghost { background: transparent; color: var(--primary-deep); border: 1px solid var(--primary); }
+.btn.ghost { background: transparent; color: var(--heading); border: 1px solid var(--primary); }
 .btn.ghost:hover { background: var(--primary-soft); }
 .btn.danger { background: transparent; color: var(--high); border: 1px solid var(--high); }
 .btn.danger:hover { background: var(--danger-hover); }
 .icon-btn {
   border: none; background: none; cursor: pointer;
-  color: var(--primary-deep); font-size: 16px; font-weight: 700;
+  color: var(--heading); font-size: 16px; font-weight: 700;
   padding: 2px 6px; border-radius: 8px;
 }
-.icon-btn:hover { background: var(--primary-soft); }
+.icon-btn:hover { background: var(--primary-soft); color: var(--primary-deep); }
 
 /* ===== 新建任务 ===== */
 #new-task {
