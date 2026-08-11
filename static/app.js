@@ -303,6 +303,14 @@ function clearLanes() {
 async function reloadAll() {
   loadTasks();
   loadStats();
+  // 日历视图可见 → 重绘日历（任务/纪念日标记变化）
+  const calEl = document.getElementById("cal-view");
+  if (calEl && !calEl.classList.contains("hidden")) loadCalendar();
+  // 当天任务弹窗开着 → 刷新内容
+  if (_dayModalDate && !document.getElementById("modal-mask").classList.contains("hidden")
+      && document.getElementById("modal-title")?.textContent === dayTitle(_dayModalDate)) {
+    loadDayModal();
+  }
 }
 
 /* 刷新全部数据。auto=true 是后台轮询（只刷核心，轻量）；手动点击刷全部 */
@@ -655,7 +663,9 @@ async function loadAnns() {
   } catch (e) { /* 忽略 */ }
 }
 
-function openAnnModal() {
+function openAnnModal(fromDay = false) {
+  // 非当天弹窗来源 → 清空来源标记（避免 saveAnn 误回弹窗）
+  if (!fromDay) _dayModalDate = "";
   $("#modal-title").textContent = "添加纪念日";
   $("#modal-body").innerHTML = `
     <label>名称</label>
@@ -682,9 +692,14 @@ async function saveAnn() {
       method: "POST",
       body: JSON.stringify({ name, month, day }),
     });
-    closeModal();
     loadAnns();
     loadCalendar();
+    // 从日历某天进入 → 保存后回到当天弹窗（能看到新纪念日）
+    if (_dayModalDate) {
+      loadDayModal();
+    } else {
+      closeModal();
+    }
     toast("已添加纪念日");
   } catch (e) { toast(e.message); }
 }
@@ -729,7 +744,83 @@ async function loadCalendar() {
     const rem = (7 - total % 7) % 7;
     for (let i = 0; i < rem; i++) cells.push(`<div class="cal-cell out"></div>`);
     $("#cal-grid").innerHTML = cells.join("");
+    // 点击某天 → 当天任务管理弹窗（非 out 占位格）
+    $("#cal-grid").onclick = (e) => {
+      const cell = e.target.closest(".cal-cell");
+      if (cell && cell.dataset.date) openDayModal(cell.dataset.date);
+    };
   } catch (e) { toast(e.message); }
+}
+
+/* 当天任务管理弹窗：查看当天任务 + 添加当天任务 + 添加当天纪念日 */
+let _dayModalDate = "";  // 当前弹窗日期 YYYY-MM-DD
+
+function dayTitle(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return `${y}年${m}月${d}日`;
+}
+
+async function loadDayModal() {
+  if (!_dayModalDate) return;
+  const ym = { year: +_dayModalDate.slice(0, 4), month: +_dayModalDate.slice(5, 7) };
+  try {
+    const cal = await api(`/api/calendar?month=${calKey(ym.year, ym.month)}`);
+    const day = String(+_dayModalDate.slice(8, 10));
+    const tasks = cal.tasks[day] || [];
+    const anns = cal.anniversaries[day] || [];
+    const taskHtml = tasks.length ? tasks.map((t) => `
+      <div class="cal-day-task ${t.status === "done" ? "done" : ""}">
+        <span class="cal-day-check ${t.status === "done" ? "checked" : ""}" onclick="${t.status === "done" ? "restoreTask" : "completeTask"}(${t.id})">✓</span>
+        <span class="cal-day-title" onclick="openTaskDetail(${t.id})">${esc(t.title)}</span>
+        <button class="cal-day-del" onclick="deleteTask(${t.id})">✕</button>
+      </div>`).join("")
+      : `<div class="cal-day-empty">当天没有任务</div>`;
+    const annHtml = anns.length ? anns.map((a) => `
+      <div class="cal-day-ann">🎂 ${esc(a.name)}</div>`).join("")
+      : "";
+    $("#modal-title").textContent = dayTitle(_dayModalDate);
+    $("#modal-body").innerHTML = `
+      ${annHtml ? `<div class="cal-day-anns">${annHtml}</div>` : ""}
+      <div class="cal-day-label">当天任务</div>
+      <div class="cal-day-list">${taskHtml}</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input id="day-new-title" placeholder="添加当天任务，回车创建…" maxlength="120" style="flex:1">
+        <button class="btn primary sm" id="day-add-task">添加</button>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn ghost sm" id="day-add-ann">🎂 添加纪念日</button>
+      </div>`;
+    openModal();
+    const addTask = () => {
+      const title = $("#day-new-title").value.trim();
+      if (!title) return;
+      api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({ title, due_date: _dayModalDate, priority: "medium", source: "manual" }),
+      }).then(() => {
+        loadDayModal(); loadCalendar(); loadTasks();
+        toast("已添加到当天");
+      }).catch((e) => toast(e.message));
+    };
+    $("#day-add-task").addEventListener("click", addTask);
+    $("#day-new-title").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addTask(); } });
+    $("#day-add-ann").addEventListener("click", () => openAnnModalFromDay(_dayModalDate));
+    $("#day-new-title").focus();
+  } catch (e) { toast(e.message); }
+}
+
+function openDayModal(dateStr) {
+  _dayModalDate = dateStr;
+  loadDayModal();
+}
+
+/* 从日历某天打开纪念日添加弹窗：日期预选当天（_dayModalDate 保留 → saveAnn 后回弹窗） */
+function openAnnModalFromDay(dateStr) {
+  _dayModalDate = dateStr;  // 确保来源标记正确
+  const m = +dateStr.slice(5, 7), d = +dateStr.slice(8, 10);
+  openAnnModal(true);
+  $("#a-month").value = String(m);
+  $("#a-day").value = String(d);
 }
 
 async function calPrev() {
