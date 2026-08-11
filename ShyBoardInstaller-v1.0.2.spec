@@ -5,7 +5,7 @@ a = Analysis(
     ['installer.py'],
     pathex=[],
     binaries=[],
-    datas=[('dist\\ShyBoard-1.0.2.zip', '.'), ('dist\\ShyBoardUninstall.exe', '.')],
+    datas=[('dist\\ShyBoard-v1.0.2.zip', '.'), ('dist\\ShyBoardUninstall.exe', '.')],
     hiddenimports=['win32com.client'],
     hookspath=[],
     hooksconfig={},
