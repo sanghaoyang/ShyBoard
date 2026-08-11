@@ -10,6 +10,7 @@
   build_installer.bat  ->  dist/ShyBoardInstaller.exe
 """
 import os
+import re
 import shutil
 import subprocess
 
@@ -32,26 +33,74 @@ C_TEXT = "#4E4450"
 C_DIM = "#8A7B86"
 C_OK = "#7FB69B"
 
-# 内嵌 zip 文件名（发版时由 build_installer.bat 指定 --add-data 的 zip 名，此处保持默认）
-ZIP_NAME = "ShyBoard-v1.0.0.zip"
-# UI 显示的版本号：从内嵌 zip 名推导（ShyBoard-vX.Y.Z.zip -> X.Y.Z）
-VERSION = ZIP_NAME.split("ShyBoard-v")[-1].replace(".zip", "")
+# 内嵌 zip 文件名匹配模式（打包时 --add-data 可能带 v 也可能不带，这里宽松匹配）
+_ZIP_RE = re.compile(r"ShyBoard[-_ ]?v?(\d+\.\d+\.\d+)\.zip", re.IGNORECASE)
+
+
+def _find_zip(directory):
+    """在 directory 下找一个内嵌 release zip，返回 (path, version) 或 (None, None)。
+
+    匹配规则：文件名形如 ShyBoard[-_ ]?v?X.Y.Z.zip（容忍打包命名差异）。
+    """
+    if not directory or not os.path.isdir(directory):
+        return None, None
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return None, None
+    for name in names:
+        m = _ZIP_RE.match(name)
+        if m and os.path.isfile(os.path.join(directory, name)):
+            return os.path.join(directory, name), m.group(1)
+    return None, None
 
 
 def bundled_zip():
-    """定位内嵌的 release zip（PyInstaller 打包后位于 _MEIPASS）。"""
+    """定位内嵌的 release zip（PyInstaller 打包后位于 _MEIPASS）。
+
+    不再硬编码文件名：运行时扫描 _MEIPASS 下的 *.zip，找到即用。
+    源码模式：依次找仓库 dist 目录（installer.py 在仓库根）。
+    """
     if getattr(sys, "_MEIPASS", ""):
-        return os.path.join(sys._MEIPASS, ZIP_NAME)
+        path, _ = _find_zip(sys._MEIPASS)
+        if path:
+            return path
     # 源码模式：从仓库 dist 找（installer.py 在仓库根）
     here = os.path.dirname(os.path.abspath(__file__))
-    for cand in (
-        os.path.join(here, "dist", ZIP_NAME),
-        os.path.join(here, "..", "dist", ZIP_NAME),
-        os.path.join(os.getcwd(), ZIP_NAME),
+    for cand_dir in (
+        os.path.join(here, "dist"),
+        os.path.join(here, "..", "dist"),
+        os.getcwd(),
     ):
-        if os.path.exists(cand):
-            return cand
+        path, _ = _find_zip(cand_dir)
+        if path:
+            return path
     return None
+
+
+def bundled_version():
+    """从内嵌 zip 文件名推导版本号（ShyBoard-vX.Y.Z.zip -> X.Y.Z）。
+
+    打包资源缺失时返回 None（此时 bundled_zip() 也会失败，报错信息会提示）。
+    """
+    if getattr(sys, "_MEIPASS", ""):
+        _, ver = _find_zip(sys._MEIPASS)
+        if ver:
+            return ver
+    here = os.path.dirname(os.path.abspath(__file__))
+    for cand_dir in (
+        os.path.join(here, "dist"),
+        os.path.join(here, "..", "dist"),
+        os.getcwd(),
+    ):
+        _, ver = _find_zip(cand_dir)
+        if ver:
+            return ver
+    return None
+
+
+# UI 显示的版本号：从内嵌 zip 名推导；推导失败时兜底 "0.0.0"（安装时 bundled_zip 会真正报错）
+VERSION = bundled_version() or "0.0.0"
 
 
 def normalize_dest(dest):
@@ -236,7 +285,7 @@ def install_to(dest, progress_cb=None, log_cb=None, mode="install"):
     """
     zip_path = bundled_zip()
     if not zip_path:
-        return False, f"安装包内嵌资源缺失（未找到 {ZIP_NAME}）"
+        return False, "安装包内嵌资源缺失（未找到 ShyBoard-*.zip，请重新下载安装包）"
     if not os.path.exists(dest):
         os.makedirs(dest, exist_ok=True)
     try:

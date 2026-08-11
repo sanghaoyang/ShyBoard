@@ -10,18 +10,19 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-rem 读取 APP_VERSION（app.py 内 "APP_VERSION = "X.Y.Z""）
-for /f "tokens=2 delims==" %%v in ('findstr /c:"APP_VERSION" app.py') do set "APP_VERSION=%%v"
-set "APP_VERSION=%APP_VERSION: =%"
-set "APP_VERSION=%APP_VERSION:"=%"
-if "%APP_VERSION%"=="" (
-    echo [ERROR] Cannot read APP_VERSION from app.py
+rem 从 dist 里找 release zip（ShyBoard-*.zip），版本号从 zip 文件名推导（与内嵌资源同源，杜绝错位）
+for /f "delims=" %%z in ('dir /b /o-d "dist\ShyBoard-*.zip" 2^>nul') do set "ZIPFILE=%%z"
+if "%ZIPFILE%"=="" (
+    echo [ERROR] dist\ShyBoard-*.zip not found. Run build.bat + pack_release.py first.
     pause
     exit /b 1
 )
-echo APP_VERSION=%APP_VERSION%
+set "APP_VERSION=%ZIPFILE:ShyBoard-=%"
+set "APP_VERSION=%APP_VERSION:.zip=%"
+set "APP_VERSION=%APP_VERSION:v=%"
+echo APP_VERSION=%APP_VERSION% (from %ZIPFILE%)
 
-set "ZIP=dist\ShyBoard-v%APP_VERSION%.zip"
+set "ZIP=dist\%ZIPFILE%"
 if not exist "%ZIP%" (
     echo [ERROR] %ZIP% not found. Run build.bat + pack_release.py first.
     pause
