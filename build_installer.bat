@@ -11,7 +11,12 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 rem 从 dist 里找 release zip（ShyBoard-*.zip），版本号从 zip 文件名推导（与内嵌资源同源，杜绝错位）
-for /f "delims=" %%z in ('dir /b /o-d "dist\ShyBoard-*.zip" 2^>nul') do set "ZIPFILE=%%z"
+rem 注意：for /f 结束后变量是最后一次迭代的值（=最旧），必须取第一个就 goto 跳出
+for /f "delims=" %%z in ('dir /b /o-d "dist\ShyBoard-*.zip" 2^>nul') do (
+    set "ZIPFILE=%%z"
+    goto :zipfound
+)
+:zipfound
 if "%ZIPFILE%"=="" (
     echo [ERROR] dist\ShyBoard-*.zip not found. Run build.bat + pack_release.py first.
     pause
