@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['uninstaller.py'],
+    ['installer.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[('dist\\ShyBoard-1.0.2.zip', '.'), ('dist\\ShyBoardUninstall.exe', '.')],
+    hiddenimports=['win32com.client'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='ShyBoardUninstall',
+    name='ShyBoardInstaller-v1.0.2',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
