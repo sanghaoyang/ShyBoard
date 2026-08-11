@@ -994,6 +994,11 @@ noAutofill();  // 关闭 WebView2 历史输入下拉框
 let APP_VERSION_TEXT = "?";  // 当前版本（从 health 接口获取）
 api("/api/health").then((h) => {
   if (h && h.version) { APP_VERSION_TEXT = h.version; $("#btn-update").title = `检查更新（当前 v${h.version}）`; }
+  // 测试版：隐藏 ⬆ 更新按钮，显示 Beta 徽标
+  if (h && h.beta) {
+    $("#btn-update").style.display = "none";
+    $("#beta-badge").style.display = "inline-block";
+  }
 }).catch(() => {});
 loadTasks();
 loadStats();

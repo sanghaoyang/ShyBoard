@@ -37,6 +37,10 @@ HEALTH_PATH = "/api/health"
 # 应用版本：发布时手动递增，与 GitHub Release tag 对应（如 v1.1.0）
 APP_VERSION = "1.0.2"
 
+# 测试版标识：exe 名含 "Beta"（如 ShyBoardBeta.exe）即为测试版——
+# 隐藏顶栏 ⬆ 自动更新按钮（测试版不走 GitHub release 更新），顶栏显示 Beta 徽标。
+IS_BETA = "beta" in os.path.basename(sys.executable).lower()
+
 # 占位页：窗口先显示纯色背景，避免导航前白屏
 PLACEHOLDER_HTML = (
     "<body style='margin:0;background:#FBF7F8;"

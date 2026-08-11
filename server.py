@@ -11,7 +11,7 @@ from flask import Flask, jsonify, request, send_from_directory
 import db
 from services import weather, favicon as favicon_service
 from services import updater
-from app import APP_VERSION
+from app import APP_VERSION, IS_BETA
 
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -45,7 +45,8 @@ def _task_out(row):
 
 @app.get("/api/health")
 def health():
-    return jsonify({"ok": True, "service": "workbench", "version": APP_VERSION})
+    return jsonify({"ok": True, "service": "workbench", "version": APP_VERSION,
+                    "beta": bool(IS_BETA)})
 
 
 # ---------------- 更新 ----------------

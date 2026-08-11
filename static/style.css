@@ -220,6 +220,14 @@ body.has-weather #w-live { display: inline-block; }
 .tb-refresh:hover { color: var(--primary-deep); }
 .tb-refresh:active { transform: rotate(180deg); }
 
+/* 测试版 Beta 徽标（雾蓝，与测试版图标呼应；正式版隐藏） */
+.tb-beta {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  color: #6E8CB0; background: rgba(126, 147, 176, 0.14);
+  border: 1px solid rgba(126, 147, 176, 0.4);
+  padding: 2px 8px; border-radius: 10px;
+}
+
 /* ===== 布局 ===== */
 #layout { flex: 1; display: flex; overflow: hidden; }
 

@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
-"""创建演示数据（新库 / 重置后使用）。用法: ./.venv/Scripts/python scripts/seed_demo.py"""
+"""创建演示数据（新库 / 重置后使用）。用法: ./.venv/Scripts/python scripts/seed_demo.py [--port <port>]
+
+--port 可选：显式指定目标端口（如往桌面测试版 17894 注入）；缺省读项目 data/port.txt。
+"""
 import json
 import os
+import sys
 import time
 import urllib.request
 
@@ -10,6 +14,8 @@ PORT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 
 def get_port():
+    if "--port" in sys.argv:
+        return sys.argv[sys.argv.index("--port") + 1]
     try:
         with open(PORT_FILE) as f:
             return f.read().strip() or "17890"

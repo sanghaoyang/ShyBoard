@@ -63,17 +63,4 @@ if errorlevel 1 (
 echo.
 echo Build OK: dist\ShyBoardInstaller-v%APP_VERSION%.exe + dist\ShyBoardUninstall.exe
 
-rem 复制安装包到桌面（本地留存，避免每次重新下载）
-for /f "usebackq delims=" %%d in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do set "DESKTOP=%%d"
-if exist "%DESKTOP%" (
-    copy /Y "dist\ShyBoardInstaller-v%APP_VERSION%.exe" "%DESKTOP%\" >nul
-    if errorlevel 1 (
-        echo [WARN] Copy to desktop failed.
-    ) else (
-        echo Copied to Desktop: %DESKTOP%\ShyBoardInstaller-v%APP_VERSION%.exe
-    )
-) else (
-    echo [WARN] Desktop path not found, skip copy.
-)
-
 pause
