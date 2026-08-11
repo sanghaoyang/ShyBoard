@@ -100,6 +100,11 @@ req("POST", "/api/links", {"name": "GitHub", "url": "github.com", "icon": "🐙"
 req("POST", "/api/links", {"name": "B站", "url": "bilibili.com", "icon": "📺"})
 req("POST", "/api/links", {"name": "知乎", "url": "zhihu.com", "icon": "📚"})
 
+print("== 创建纪念日 ==")
+req("POST", "/api/anniversaries", {"name": "老妈生日", "month": 11, "day": 6})
+req("POST", "/api/anniversaries", {"name": "老爸生日", "month": 12, "day": 2})
+req("POST", "/api/anniversaries", {"name": "元旦", "month": 1, "day": 1})
+
 s, stats = req("GET", "/api/stats")
 print("\n== 完成 ==")
 print("统计:", stats)

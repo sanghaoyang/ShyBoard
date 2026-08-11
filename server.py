@@ -351,6 +351,102 @@ def pomodoro_complete():
     return jsonify(db.pomodoro_complete())
 
 
+# ---------------- 纪念日 ----------------
+
+@app.get("/api/anniversaries")
+def anniversaries_list():
+    """全部纪念日 + 计算下次日期/剩余天数（公历每年循环）。"""
+    items = []
+    for a in db.list_anniversaries():
+        date_str, days = db.next_anniversary(a["month"], a["day"])
+        items.append({
+            "id": a["id"],
+            "name": a["name"],
+            "month": a["month"],
+            "day": a["day"],
+            "next_date": date_str,
+            "days_left": days,
+        })
+    return jsonify(items)
+
+
+@app.post("/api/anniversaries")
+def anniversaries_create():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name", "")).strip()
+    try:
+        month = int(data.get("month", 0))
+        day = int(data.get("day", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "月份/日期必须是数字"}), 400
+    if not name:
+        return jsonify({"error": "请输入纪念日名称"}), 400
+    if not (1 <= month <= 12 and 1 <= day <= 31):
+        return jsonify({"error": "日期不合法"}), 400
+    # 校验该月确实有这一天（如 2/30 非法）
+    import calendar as _cal
+    if day > _cal.monthrange(2024, month)[1]:
+        return jsonify({"error": "日期不合法"}), 400
+    return jsonify(db.create_anniversary(name, month, day)), 201
+
+
+@app.delete("/api/anniversaries/<int:ann_id>")
+def anniversaries_delete(ann_id):
+    if not db.get_anniversary(ann_id):
+        return jsonify({"error": "纪念日不存在"}), 404
+    db.delete_anniversary(ann_id)
+    return jsonify({"ok": True})
+
+
+# ---------------- 日历（月视图：任务 + 纪念日） ----------------
+
+@app.get("/api/calendar")
+def calendar_month():
+    """返回某月每天的任务（due_date 命中）与纪念日（公历循环命中）。
+
+    ?month=YYYY-MM（缺省当月）。tasks 返回含 id/title/status/priority；
+    anniversaries 返回 id/name。today 返回今天日期字符串。
+    """
+    from datetime import date, datetime as _dt
+    import calendar as _cal
+    now = _dt.now()
+    m = request.args.get("month", "")
+    try:
+        if m:
+            year, month = int(m[:4]), int(m[5:7])
+        else:
+            year, month = now.year, now.month
+    except (ValueError, IndexError):
+        return jsonify({"error": "月份格式应为 YYYY-MM"}), 400
+    if not (1 <= month <= 12):
+        return jsonify({"error": "月份不合法"}), 400
+
+    days_in_month = _cal.monthrange(year, month)[1]
+    tasks_by_day = {}
+    for t in db.list_tasks(include_done=True, limit=500):
+        due = (t.get("due_date") or "").strip()
+        if len(due) >= 10 and due[:4] == str(year) and due[5:7] == f"{month:02d}":
+            d = int(due[8:10])
+            if 1 <= d <= days_in_month:
+                tasks_by_day.setdefault(d, []).append({
+                    "id": t["id"], "title": t["title"],
+                    "status": t["status"], "priority": t["priority"],
+                })
+    anns_by_day = {}
+    for a in db.list_anniversaries():
+        if a["month"] == month:
+            anns_by_day.setdefault(a["day"], []).append(
+                {"id": a["id"], "name": a["name"]}
+            )
+    return jsonify({
+        "year": year, "month": month, "days": days_in_month,
+        "first_weekday": _cal.monthrange(year, month)[0],
+        "today": now.strftime("%Y-%m-%d"),
+        "tasks": tasks_by_day,
+        "anniversaries": anns_by_day,
+    })
+
+
 # ---------------- 设置 ----------------
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"

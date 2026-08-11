@@ -316,6 +316,8 @@ async function refreshAll(auto = true) {
     loadNotes();
     loadLinks();
     loadWeather();
+    loadAnns();
+    if (!$("#cal-view").classList.contains("hidden")) loadCalendar();
   }
 }
 
@@ -612,6 +614,145 @@ async function deleteNote(id) {
   }
   try { await api(`/api/notes/${id}`, { method: "DELETE" }); loadNotes(); }
   catch (e) { toast(e.message); }
+}
+
+/* ---------- 纪念日 ---------- */
+const ANN_EMOJI = "🎂";
+
+async function loadAnns() {
+  try {
+    const items = await api("/api/anniversaries");
+    if (!items.length) {
+      $("#anns").innerHTML = `<div class="ann-empty">暂无纪念日，点 ＋ 添加</div>`;
+      return;
+    }
+    const today = new Date();
+    $("#anns").innerHTML = items.map((a) => {
+      const isToday = a.days_left === 0;
+      const label = isToday ? "就是今天 🎉"
+        : a.days_left === 1 ? "明天"
+        : `还有 ${a.days_left} 天`;
+      return `
+        <div class="ann-item ${isToday ? "ann-today" : ""}" data-id="${a.id}">
+          <span class="ann-emoji">${ANN_EMOJI}</span>
+          <span class="ann-info">
+            <div class="ann-name">${esc(a.name)}</div>
+            <div class="ann-days">${a.month}/${a.day} · ${label}</div>
+          </span>
+          <button class="ann-del" title="删除">✕</button>
+        </div>`;
+    }).join("");
+    $("#anns").onclick = async (e) => {
+      const del = e.target.closest(".ann-del");
+      if (!del) return;
+      const id = +del.closest(".ann-item").dataset.id;
+      if (SETTINGS.confirm_delete_note !== "0") {
+        if (!await confirmDialog("删除这个纪念日？", { okText: "删除", title: "删除纪念日" })) return;
+      }
+      try { await api(`/api/anniversaries/${id}`, { method: "DELETE" }); loadAnns(); loadCalendar(); }
+      catch (err) { toast(err.message); }
+    };
+  } catch (e) { /* 忽略 */ }
+}
+
+function openAnnModal() {
+  $("#modal-title").textContent = "添加纪念日";
+  $("#modal-body").innerHTML = `
+    <label>名称</label>
+    <input id="a-name" placeholder="例如：老妈生日" maxlength="30">
+    <label>日期（每年循环）</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="a-month" style="flex:1">
+        ${Array.from({length:12}, (_,i)=>`<option value="${i+1}">${i+1} 月</option>`).join("")}
+      </select>
+      <select id="a-day" style="flex:1">
+        ${Array.from({length:31}, (_,i)=>`<option value="${i+1}">${i+1} 日</option>`).join("")}
+      </select>
+    </div>`;
+  openModal();
+  $("#a-name").focus();
+}
+
+async function saveAnn() {
+  const name = $("#a-name").value.trim();
+  if (!name) { toast("请输入纪念日名称"); return; }
+  const month = +$("#a-month").value, day = +$("#a-day").value;
+  try {
+    await api("/api/anniversaries", {
+      method: "POST",
+      body: JSON.stringify({ name, month, day }),
+    });
+    closeModal();
+    loadAnns();
+    loadCalendar();
+    toast("已添加纪念日");
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- 日历视图 ---------- */
+let _calYM = null;  // {year, month} 当前显示月份（null=跟随今天）
+
+function todayYM() {
+  const n = new Date();
+  return { year: n.getFullYear(), month: n.getMonth() + 1 };
+}
+
+function calKey(y, m) { return `${y}-${String(m).padStart(2, "0")}`; }
+
+async function loadCalendar() {
+  const ym = _calYM || todayYM();
+  try {
+    const d = await api(`/api/calendar?month=${calKey(ym.year, ym.month)}`);
+    $("#cal-title").textContent = `${d.year}年${d.month}月`;
+    const cells = [];
+    const pad = d.first_weekday;  // 0=周日
+    for (let i = 0; i < pad; i++) cells.push(`<div class="cal-cell out"></div>`);
+    for (let day = 1; day <= d.days; day++) {
+      const dateStr = `${d.year}-${String(d.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const isToday = dateStr === d.today;
+      const tasks = d.tasks[day] || [];
+      const anns = d.anniversaries[day] || [];
+      const taskHtml = tasks.slice(0, 3).map((t) =>
+        `<div class="cal-task ${t.status === "done" ? "done" : ""}" title="${esc(t.title)}">${esc(t.title)}</div>`
+      ).join("");
+      const more = tasks.length > 3 ? `<div class="cal-task" style="color:var(--text-dim)">+${tasks.length - 3}</div>` : "";
+      const annHtml = anns.map((a) => `<div class="cal-ann" title="${esc(a.name)}">🎂 ${esc(a.name)}</div>`).join("");
+      cells.push(`
+        <div class="cal-cell ${isToday ? "today" : ""}" data-date="${dateStr}">
+          <div class="cal-daynum">${day}</div>
+          ${annHtml}
+          ${taskHtml}
+          ${more}
+        </div>`);
+    }
+    const total = pad + d.days;
+    const rem = (7 - total % 7) % 7;
+    for (let i = 0; i < rem; i++) cells.push(`<div class="cal-cell out"></div>`);
+    $("#cal-grid").innerHTML = cells.join("");
+  } catch (e) { toast(e.message); }
+}
+
+async function calPrev() {
+  _calYM = _calYM || todayYM();
+  if (_calYM.month === 1) { _calYM = { year: _calYM.year - 1, month: 12 }; }
+  else { _calYM = { year: _calYM.year, month: _calYM.month - 1 }; }
+  loadCalendar();
+}
+async function calNext() {
+  _calYM = _calYM || todayYM();
+  if (_calYM.month === 12) { _calYM = { year: _calYM.year + 1, month: 1 }; }
+  else { _calYM = { year: _calYM.year, month: _calYM.month + 1 }; }
+  loadCalendar();
+}
+function calToday() { _calYM = null; loadCalendar(); }
+
+function switchView(view) {
+  const tasksView = view === "tasks";
+  $("#lanes").style.display = tasksView ? "grid" : "none";
+  $("#cal-view").classList.toggle("hidden", tasksView);
+  $("#tab-tasks").classList.toggle("active", tasksView);
+  $("#tab-calendar").classList.toggle("active", !tasksView);
+  if (!tasksView) loadCalendar();
 }
 
 /* ---------- 弹窗 ---------- */
@@ -970,12 +1111,19 @@ $("#pomo-start").addEventListener("click", pomoStartClick);
 $("#pomo-skip").addEventListener("click", pomoSkipClick);
 $(".add-link-btn").addEventListener("click", openLinkModal);
 $(".add-note-btn").addEventListener("click", openNoteModal);
+$(".add-ann-btn").addEventListener("click", openAnnModal);
+$("#cal-prev").addEventListener("click", calPrev);
+$("#cal-next").addEventListener("click", calNext);
+$("#cal-today-btn").addEventListener("click", calToday);
+$("#tab-tasks").addEventListener("click", () => switchView("tasks"));
+$("#tab-calendar").addEventListener("click", () => switchView("calendar"));
 $("#modal-cancel").addEventListener("click", closeModal);
 $("#modal-ok").addEventListener("click", () => {
   const title = $("#modal-title").textContent;
   if (title === "编辑任务") saveTaskEdit();
   else if (title === "添加快捷方式") saveLink();
   else if (title === "新建便签") saveNote();
+  else if (title === "添加纪念日") saveAnn();
   // 修改城市走 suggest-item 回调，确定按钮无操作
 });
 $("#modal-mask").addEventListener("click", (e) => {
@@ -1006,6 +1154,7 @@ loadSettings();
 loadWeather();
 loadLinks();
 loadNotes();
+loadAnns();
 api("/api/pomodoro").then((d) => {
   $("#pomo-count").textContent = `🍅 今日 ${d.count}`;
 }).catch(() => {});

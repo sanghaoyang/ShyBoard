@@ -81,6 +81,13 @@ def init_db():
                 created_at TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, id);
+            CREATE TABLE IF NOT EXISTS anniversaries (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL,
+                month      INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+                day        INTEGER NOT NULL CHECK(day BETWEEN 1 AND 31),
+                created_at TEXT
+            );
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
                 value TEXT
@@ -328,6 +335,76 @@ def delete_link(link_id):
         return True
     finally:
         conn.close()
+
+
+# ---------------- 纪念日 ----------------
+
+
+def create_anniversary(name, month, day):
+    now = _now()
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT INTO anniversaries (name, month, day, created_at) VALUES (?,?,?,?)",
+            (name, int(month), int(day), now),
+        )
+        conn.commit()
+        return get_anniversary(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+def list_anniversaries():
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM anniversaries ORDER BY month, day, id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_anniversary(ann_id):
+    conn = get_conn()
+    try:
+        r = conn.execute(
+            "SELECT * FROM anniversaries WHERE id = ?", (ann_id,)
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def delete_anniversary(ann_id):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM anniversaries WHERE id = ?", (ann_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def next_anniversary(month, day, today=None):
+    """计算下次纪念日的日期字符串与剩余天数（公历每年循环）。
+
+    返回 (date_str, days_left)：date_str 形如 '2026-11-06'；
+    若今天就是纪念日返回 days_left=0。2/29 边界：平年顺延到 2/28。
+    """
+    from datetime import date as _date
+    today = today or _date.today()
+    try:
+        cand = _date(today.year, month, day)
+    except ValueError:
+        # 2/29 在平年不存在 → 落到 2/28
+        cand = _date(today.year, month, min(day, 28))
+    if cand < today:
+        try:
+            cand = _date(today.year + 1, month, day)
+        except ValueError:
+            cand = _date(today.year + 1, month, min(day, 28))
+    return cand.isoformat(), (cand - today).days
 
 
 # ---------------- 设置 ----------------

@@ -19,6 +19,10 @@
     <button id="btn-update" title="检查更新" class="tb-refresh">⬆</button>
     <button id="btn-refresh" title="刷新数据" class="tb-refresh">↻</button>
     <button id="btn-settings" title="设置" class="tb-refresh">⚙️</button>
+    <div class="view-tabs">
+      <button id="tab-tasks" class="view-tab active" title="任务看板">📋</button>
+      <button id="tab-calendar" class="view-tab" title="日历视图">📅</button>
+    </div>
     <div id="weather" class="tb-weather" title="点击修改城市">
       <span id="w-icon"></span>
       <span id="w-temp"></span>
@@ -46,6 +50,13 @@
         <button class="btn primary sm" id="pomo-start">开始</button>
         <button class="btn ghost sm" id="pomo-skip" disabled>跳过</button>
       </div>
+    </section>
+
+    <section class="panel" id="ann-panel">
+      <h3>纪念日
+        <button class="icon-btn add-ann-btn" title="添加纪念日">＋</button>
+      </h3>
+      <div id="anns" class="ann-list"></div>
     </section>
 
     <section class="panel" id="link-panel">
@@ -102,6 +113,24 @@
           <span class="lane-count" id="cnt-done">0</span>
         </div>
         <div class="lane-body" id="lane-done"></div>
+      </div>
+    </div>
+
+    <!-- 日历视图（tab 切换显示） -->
+    <div id="cal-view" class="hidden">
+      <div class="cal-head">
+        <button class="cal-nav" id="cal-prev">‹</button>
+        <div class="cal-title" id="cal-title">2026年8月</div>
+        <button class="cal-nav" id="cal-next">›</button>
+        <button class="btn ghost sm cal-today" id="cal-today-btn">今天</button>
+      </div>
+      <div class="cal-weekdays">
+        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-legend">
+        <span class="lg-item"><i class="lg-dot lg-task"></i>任务截止</span>
+        <span class="lg-item"><i class="lg-dot lg-ann"></i>纪念日</span>
       </div>
     </div>
   </main>

@@ -159,6 +159,7 @@ check("javascript: 伪协议拒绝", s == 400, str(d))
 s, d = req("POST", "/api/links", {"name": "x", "url": "sort_order", "sort_order": "abc"})
 check("非数字 sort_order 不崩溃", s == 201, str(d))
 s, d = req("GET", "/api/links")
+
 check("链接列表", s == 200 and isinstance(d, list) and len(d) >= 1, str(d)[:80])
 s, d = req("DELETE", f"/api/links/{lid}")
 check("删除链接", s == 200 and d.get("ok"), str(d))
@@ -247,6 +248,44 @@ check("首页含 title", b"ShyBoard" in body, "body 无 ShyBoard")
 s, body = req_raw("GET", "/cities.json")
 check("cities.json 是合法 JSON", s == 200, f"got {s}")
 
+
+# ---------- 10. 纪念日 + 日历 ----------
+section("10. 纪念日与日历")
+s, d = req("GET", "/api/anniversaries")
+check("纪念日空列表", s == 200 and d == [], str(d)[:100])
+s, d = req("POST", "/api/anniversaries", {"name": "QA测试生日", "month": 11, "day": 6})
+check("新增纪念日", s == 201 and d.get("name") == "QA测试生日", str(d)[:100])
+ann_id = d.get("id")
+s, d = req("POST", "/api/anniversaries", {"name": "QA非法", "month": 2, "day": 30})
+check("非法日期 400", s == 400, str(d)[:100])
+s, d = req("POST", "/api/anniversaries", {"name": "", "month": 1, "day": 1})
+check("空名称 400", s == 400, str(d)[:100])
+s, d = req("GET", "/api/anniversaries")
+qa_ann = [a for a in d if a["id"] == ann_id]
+check("纪念日含倒计时字段",
+      s == 200 and qa_ann and "days_left" in qa_ann[0] and qa_ann[0]["month"] == 11,
+      str(d)[:150])
+s, d = req("DELETE", f"/api/anniversaries/{ann_id}")
+check("删除纪念日", s == 200, str(d)[:100])
+s, d = req("DELETE", f"/api/anniversaries/{ann_id}")
+check("删除不存在纪念日 404", s == 404, str(d)[:100])
+# 日历接口：先建带 due_date 任务和纪念日，验证归位
+s, t = req("POST", "/api/tasks", {"title": "QA日历任务", "due_date": "2026-11-06"})
+s, ann = req("POST", "/api/anniversaries", {"name": "QA日历纪念", "month": 11, "day": 6})
+import datetime as _dt
+_cur = _dt.date.today()
+_nov = "2026-11" if _cur.year <= 2026 else f"{_cur.year}-11"
+s, d = req("GET", f"/api/calendar?month={_nov}")
+check("日历接口正常", s == 200 and "tasks" in d and "anniversaries" in d, str(d)[:100])
+_day6_tasks = [x for x in d.get("tasks", {}).get("6", []) if x.get("title") == "QA日历任务"]
+_day6_anns = [x for x in d.get("anniversaries", {}).get("6", []) if x.get("name") == "QA日历纪念"]
+check("日历任务归位 11/6", len(_day6_tasks) == 1, str(d.get("tasks"))[:150])
+check("日历纪念日归位 11/6", len(_day6_anns) == 1, str(d.get("anniversaries"))[:150])
+s, d = req("GET", "/api/calendar?month=2026-13")
+check("非法月份 400", s == 400, str(d)[:100])
+req("DELETE", f"/api/tasks/{t['id']}")
+req("DELETE", f"/api/anniversaries/{ann['id']}")
+
 # ---------- 清理测试数据 ----------
 section("清理")
 s, d = req("GET", "/api/tasks")
@@ -258,6 +297,9 @@ for n in [x for x in d if str(x["content"]).startswith("QA")]:
 s, d = req("GET", "/api/links")
 for l in [x for x in d if str(x["name"]).startswith("QA")]:
     req("DELETE", f"/api/links/{l['id']}")
+s, d = req("GET", "/api/anniversaries")
+for a in [x for x in d if str(x["name"]).startswith("QA")]:
+    req("DELETE", f"/api/anniversaries/{a['id']}")
 
 print(f"\n{'='*50}")
 print(f"RESULT: {PASS} passed, {FAIL} failed")
