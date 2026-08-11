@@ -23,6 +23,7 @@ if errorlevel 1 (
   --add-data "update.ps1;." ^
   --hidden-import webview.platforms.edgechromium ^
   --hidden-import webview.platforms.winforms ^
+  --hidden-import lunar_python ^
   app.py
 
 if errorlevel 1 (
