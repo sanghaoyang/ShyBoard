@@ -640,12 +640,17 @@ async function loadAnns() {
       const label = isToday ? "就是今天 🎉"
         : a.days_left === 1 ? "明天"
         : `还有 ${a.days_left} 天`;
+      const typeTag = a.calendar_type === "lunar"
+        ? `<span class="ann-type-tag">农历</span>` : "";
+      const dateText = a.calendar_type === "lunar"
+        ? `农历${Math.abs(a.month)}月${a.day}日${a.month < 0 ? "（闰）" : ""}`
+        : `${a.month}/${a.day}`;
       return `
         <div class="ann-item ${isToday ? "ann-today" : ""}" data-id="${a.id}">
           <span class="ann-emoji">${ANN_EMOJI}</span>
           <span class="ann-info">
-            <div class="ann-name">${esc(a.name)}</div>
-            <div class="ann-days">${a.month}/${a.day} · ${label}</div>
+            <div class="ann-name">${esc(a.name)}${typeTag}</div>
+            <div class="ann-days">${dateText} · ${label}</div>
           </span>
           <button class="ann-del" title="删除">✕</button>
         </div>`;
@@ -667,9 +672,8 @@ function openAnnModal(fromDay = false) {
   // 非当天弹窗来源 → 清空来源标记（避免 saveAnn 误回弹窗）
   if (!fromDay) _dayModalDate = "";
   $("#modal-title").textContent = "添加纪念日";
-  $("#modal-body").innerHTML = `
-    <label>名称</label>
-    <input id="a-name" placeholder="例如：老妈生日" maxlength="30">
+  // 从某天进入：日期固定为那天，只需选农历/阳历 + 名称
+  let datePart = `
     <label>日期（每年循环）</label>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="a-month" style="flex:1">
@@ -679,18 +683,73 @@ function openAnnModal(fromDay = false) {
         ${Array.from({length:31}, (_,i)=>`<option value="${i+1}">${i+1} 日</option>`).join("")}
       </select>
     </div>`;
+  if (_dayModalDate) {
+    const [y, m, d] = _dayModalDate.split("-").map(Number);
+    datePart = `
+      <label>日期（${y}年${m}月${d}日，每年循环）</label>
+      <input type="hidden" id="a-month" value="${m}">
+      <input type="hidden" id="a-day" value="${d}">`;
+  }
+  $("#modal-body").innerHTML = `
+    <label>名称</label>
+    <input id="a-name" placeholder="例如：老妈生日" maxlength="30">
+    ${datePart}
+    <label>日历类型</label>
+    <div style="display:flex;gap:8px" id="a-type-row">
+      <button type="button" class="btn ghost sm ann-type-btn active" data-type="solar">阳历</button>
+      <button type="button" class="btn ghost sm ann-type-btn" data-type="lunar">农历</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-dim);margin-top:6px" id="a-type-hint"></div>`;
   openModal();
   $("#a-name").focus();
+  // 类型切换：农历时若从某天进入，把日期换算成农历月日
+  const hint = $("#a-type-hint");
+  const updateHint = async () => {
+    const t = document.querySelector(".ann-type-btn.active").dataset.type;
+    if (t === "lunar" && _dayModalDate) {
+      const [y, m, d] = _dayModalDate.split("-").map(Number);
+      try {
+        const cal = await api(`/api/calendar?month=${calKey(y, m)}`);
+        const lun = cal.lunar && cal.lunar[String(d)];
+        if (lun && lun.month) {
+          hint.textContent = `该日农历为 ${Math.abs(lun.month)}月${lun.day}日${lun.month < 0 ? "（闰月）" : ""}，将按每年农历这天循环`;
+        }
+      } catch (e) { hint.textContent = ""; }
+    } else if (t === "solar" && _dayModalDate) {
+      hint.textContent = "将按每年阳历这天循环";
+    }
+  };
+  $("#a-type-row").onclick = (e) => {
+    const btn = e.target.closest(".ann-type-btn");
+    if (!btn) return;
+    document.querySelectorAll(".ann-type-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    updateHint();
+  };
+  updateHint();
 }
 
 async function saveAnn() {
   const name = $("#a-name").value.trim();
   if (!name) { toast("请输入纪念日名称"); return; }
   const month = +$("#a-month").value, day = +$("#a-day").value;
+  const ctype = document.querySelector(".ann-type-btn.active").dataset.type;
+  // 农历 + 从某天进入：把阳历日期换算成农历月日存储（闰月为负）
+  let storeMonth = month, storeDay = day;
+  if (ctype === "lunar" && _dayModalDate) {
+    const [y, m, d] = _dayModalDate.split("-").map(Number);
+    try {
+      const cal = await api(`/api/calendar?month=${calKey(y, m)}`);
+      const lun = cal.lunar && cal.lunar[String(d)];
+      if (lun && lun.month) {
+        storeMonth = lun.month;
+        storeDay = lun.day;
+      }
+    } catch (e) { /* 保持阳历值 */ }
+  }
   try {
     await api("/api/anniversaries", {
       method: "POST",
-      body: JSON.stringify({ name, month, day }),
+      body: JSON.stringify({ name, month: storeMonth, day: storeDay, calendar_type: ctype }),
     });
     loadAnns();
     loadCalendar();
@@ -725,19 +784,17 @@ async function loadCalendar() {
     for (let day = 1; day <= d.days; day++) {
       const dateStr = `${d.year}-${String(d.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const isToday = dateStr === d.today;
-      const tasks = d.tasks[day] || [];
       const anns = d.anniversaries[day] || [];
-      const taskHtml = tasks.slice(0, 3).map((t) =>
-        `<div class="cal-task ${t.status === "done" ? "done" : ""}" title="${esc(t.title)}">${esc(t.title)}</div>`
-      ).join("");
-      const more = tasks.length > 3 ? `<div class="cal-task" style="color:var(--text-dim)">+${tasks.length - 3}</div>` : "";
+      const lun = d.lunar && d.lunar[day] || { month: 0, day: 0, month_name: "", day_name: "" };
+      // 农历显示：初一显示"六月初一"（含月名），其余显示"廿九"
+      const lunarText = lun.day === 1
+        ? `${lun.month_name}月${lun.day_name}`
+        : lun.day_name;
       const annHtml = anns.map((a) => `<div class="cal-ann" title="${esc(a.name)}">🎂 ${esc(a.name)}</div>`).join("");
       cells.push(`
         <div class="cal-cell ${isToday ? "today" : ""}" data-date="${dateStr}">
-          <div class="cal-daynum">${day}</div>
+          <div class="cal-daynum">${day}<span class="cal-lunar">${lunarText}</span></div>
           ${annHtml}
-          ${taskHtml}
-          ${more}
         </div>`);
     }
     const total = pad + d.days;
@@ -766,46 +823,21 @@ async function loadDayModal() {
   try {
     const cal = await api(`/api/calendar?month=${calKey(ym.year, ym.month)}`);
     const day = String(+_dayModalDate.slice(8, 10));
-    const tasks = cal.tasks[day] || [];
     const anns = cal.anniversaries[day] || [];
-    const taskHtml = tasks.length ? tasks.map((t) => `
-      <div class="cal-day-task ${t.status === "done" ? "done" : ""}">
-        <span class="cal-day-check ${t.status === "done" ? "checked" : ""}" onclick="${t.status === "done" ? "restoreTask" : "completeTask"}(${t.id})">✓</span>
-        <span class="cal-day-title" onclick="openTaskDetail(${t.id})">${esc(t.title)}</span>
-        <button class="cal-day-del" onclick="deleteTask(${t.id})">✕</button>
-      </div>`).join("")
-      : `<div class="cal-day-empty">当天没有任务</div>`;
+    const lun = (cal.lunar && cal.lunar[day]) || { month: 0, day: 0, month_name: "", day_name: "" };
     const annHtml = anns.length ? anns.map((a) => `
-      <div class="cal-day-ann">🎂 ${esc(a.name)}</div>`).join("")
+      <div class="cal-day-ann">🎂 ${esc(a.name)}${a.calendar_type === "lunar" ? "（农历）" : ""}</div>`).join("")
       : "";
+    const lunarLine = lun.day ? ` · 农历${lun.month_name}月${lun.day_name}` : "";
     $("#modal-title").textContent = dayTitle(_dayModalDate);
     $("#modal-body").innerHTML = `
+      <div class="cal-day-lunar">${lunarLine.replace(" · 农历", "")}</div>
       ${annHtml ? `<div class="cal-day-anns">${annHtml}</div>` : ""}
-      <div class="cal-day-label">当天任务</div>
-      <div class="cal-day-list">${taskHtml}</div>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <input id="day-new-title" placeholder="添加当天任务，回车创建…" maxlength="120" style="flex:1">
-        <button class="btn primary sm" id="day-add-task">添加</button>
-      </div>
-      <div style="margin-top:8px">
-        <button class="btn ghost sm" id="day-add-ann">🎂 添加纪念日</button>
+      <div style="margin-top:10px">
+        <button class="btn primary sm" id="day-add-ann">🎂 设为纪念日</button>
       </div>`;
     openModal();
-    const addTask = () => {
-      const title = $("#day-new-title").value.trim();
-      if (!title) return;
-      api("/api/tasks", {
-        method: "POST",
-        body: JSON.stringify({ title, due_date: _dayModalDate, priority: "medium", source: "manual" }),
-      }).then(() => {
-        loadDayModal(); loadCalendar(); loadTasks();
-        toast("已添加到当天");
-      }).catch((e) => toast(e.message));
-    };
-    $("#day-add-task").addEventListener("click", addTask);
-    $("#day-new-title").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addTask(); } });
     $("#day-add-ann").addEventListener("click", () => openAnnModalFromDay(_dayModalDate));
-    $("#day-new-title").focus();
   } catch (e) { toast(e.message); }
 }
 
@@ -814,13 +846,10 @@ function openDayModal(dateStr) {
   loadDayModal();
 }
 
-/* 从日历某天打开纪念日添加弹窗：日期预选当天（_dayModalDate 保留 → saveAnn 后回弹窗） */
+/* 从日历某天打开纪念日弹窗：日期即当天（_dayModalDate 保留 → saveAnn 后回弹窗） */
 function openAnnModalFromDay(dateStr) {
   _dayModalDate = dateStr;  // 确保来源标记正确
-  const m = +dateStr.slice(5, 7), d = +dateStr.slice(8, 10);
   openAnnModal(true);
-  $("#a-month").value = String(m);
-  $("#a-day").value = String(d);
 }
 
 async function calPrev() {

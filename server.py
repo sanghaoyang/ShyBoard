@@ -355,15 +355,17 @@ def pomodoro_complete():
 
 @app.get("/api/anniversaries")
 def anniversaries_list():
-    """全部纪念日 + 计算下次日期/剩余天数（公历每年循环）。"""
+    """全部纪念日 + 计算下次阳历日期/剩余天数（solar 公历 / lunar 农历循环）。"""
     items = []
     for a in db.list_anniversaries():
-        date_str, days = db.next_anniversary(a["month"], a["day"])
+        date_str, days = db.next_anniversary(
+            a["month"], a["day"], a.get("calendar_type", "solar"))
         items.append({
             "id": a["id"],
             "name": a["name"],
             "month": a["month"],
             "day": a["day"],
+            "calendar_type": a.get("calendar_type", "solar"),
             "next_date": date_str,
             "days_left": days,
         })
@@ -374,6 +376,9 @@ def anniversaries_list():
 def anniversaries_create():
     data = request.get_json(silent=True) or {}
     name = str(data.get("name", "")).strip()
+    ctype = str(data.get("calendar_type", "solar")).strip()
+    if ctype not in ("solar", "lunar"):
+        return jsonify({"error": "日历类型只能是 solar 或 lunar"}), 400
     try:
         month = int(data.get("month", 0))
         day = int(data.get("day", 0))
@@ -381,13 +386,14 @@ def anniversaries_create():
         return jsonify({"error": "月份/日期必须是数字"}), 400
     if not name:
         return jsonify({"error": "请输入纪念日名称"}), 400
-    if not (1 <= month <= 12 and 1 <= day <= 31):
+    if not (1 <= abs(month) <= 12 and 1 <= day <= 31):
         return jsonify({"error": "日期不合法"}), 400
-    # 校验该月确实有这一天（如 2/30 非法）
-    import calendar as _cal
-    if day > _cal.monthrange(2024, month)[1]:
-        return jsonify({"error": "日期不合法"}), 400
-    return jsonify(db.create_anniversary(name, month, day)), 201
+    if ctype == "solar":
+        # 校验该月确实有这一天（如 2/30 非法）
+        import calendar as _cal
+        if day > _cal.monthrange(2024, month)[1]:
+            return jsonify({"error": "日期不合法"}), 400
+    return jsonify(db.create_anniversary(name, month, day, ctype)), 201
 
 
 @app.delete("/api/anniversaries/<int:ann_id>")
@@ -422,27 +428,44 @@ def calendar_month():
         return jsonify({"error": "月份不合法"}), 400
 
     days_in_month = _cal.monthrange(year, month)[1]
-    tasks_by_day = {}
-    for t in db.list_tasks(include_done=True, limit=500):
-        due = (t.get("due_date") or "").strip()
-        if len(due) >= 10 and due[:4] == str(year) and due[5:7] == f"{month:02d}":
-            d = int(due[8:10])
-            if 1 <= d <= days_in_month:
-                tasks_by_day.setdefault(d, []).append({
-                    "id": t["id"], "title": t["title"],
-                    "status": t["status"], "priority": t["priority"],
-                })
+    # 每日农历（阳历日期 → 农历月/日；闰月 month 为负）。key 为字符串日（"1"~"31"）
+    from lunar_python import Solar
+    lunar_by_day = {}
+    for day in range(1, days_in_month + 1):
+        try:
+            s = Solar.fromYmd(year, month, day)
+            lunar = s.getLunar()
+            lunar_by_day[str(day)] = {
+                "month": lunar.getMonth(),       # 负值=闰月
+                "day": lunar.getDay(),
+                "month_name": lunar.getMonthInChinese(),
+                "day_name": lunar.getDayInChinese(),
+            }
+        except Exception:
+            lunar_by_day[str(day)] = {"month": 0, "day": 0, "month_name": "", "day_name": ""}
+    # 纪念日归位：solar 直接按公历月日；lunar 换算当年阳历日期（落在本月才显示）
     anns_by_day = {}
     for a in db.list_anniversaries():
-        if a["month"] == month:
-            anns_by_day.setdefault(a["day"], []).append(
-                {"id": a["id"], "name": a["name"]}
-            )
+        if a.get("calendar_type", "solar") == "solar":
+            if a["month"] == month and 1 <= a["day"] <= days_in_month:
+                anns_by_day.setdefault(str(a["day"]), []).append(
+                    {"id": a["id"], "name": a["name"], "calendar_type": "solar"})
+        else:
+            # 农历：当年该农历月日 → 阳历
+            try:
+                from lunar_python import Lunar
+                l = Lunar.fromYmd(year, a["month"], a["day"])
+                s = l.getSolar()
+                if s.getYear() == year and s.getMonth() == month:
+                    anns_by_day.setdefault(str(s.getDay()), []).append(
+                        {"id": a["id"], "name": a["name"], "calendar_type": "lunar"})
+            except Exception:
+                pass
     return jsonify({
         "year": year, "month": month, "days": days_in_month,
         "first_weekday": _cal.monthrange(year, month)[0],
         "today": now.strftime("%Y-%m-%d"),
-        "tasks": tasks_by_day,
+        "lunar": lunar_by_day,
         "anniversaries": anns_by_day,
     })
 

@@ -101,9 +101,11 @@ req("POST", "/api/links", {"name": "B站", "url": "bilibili.com", "icon": "📺"
 req("POST", "/api/links", {"name": "知乎", "url": "zhihu.com", "icon": "📚"})
 
 print("== 创建纪念日 ==")
-req("POST", "/api/anniversaries", {"name": "老妈生日", "month": 11, "day": 6})
-req("POST", "/api/anniversaries", {"name": "老爸生日", "month": 12, "day": 2})
-req("POST", "/api/anniversaries", {"name": "元旦", "month": 1, "day": 1})
+req("POST", "/api/anniversaries", {"name": "老妈生日", "month": 11, "day": 6, "calendar_type": "solar"})
+req("POST", "/api/anniversaries", {"name": "老爸生日", "month": 12, "day": 2, "calendar_type": "solar"})
+req("POST", "/api/anniversaries", {"name": "元旦", "month": 1, "day": 1, "calendar_type": "solar"})
+req("POST", "/api/anniversaries", {"name": "中秋", "month": 8, "day": 15, "calendar_type": "lunar"})
+req("POST", "/api/anniversaries", {"name": "除夕", "month": 12, "day": 30, "calendar_type": "lunar"})
 
 s, stats = req("GET", "/api/stats")
 print("\n== 完成 ==")

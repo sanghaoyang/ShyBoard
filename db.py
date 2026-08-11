@@ -82,11 +82,12 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, id);
             CREATE TABLE IF NOT EXISTS anniversaries (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                name       TEXT NOT NULL,
-                month      INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
-                day        INTEGER NOT NULL CHECK(day BETWEEN 1 AND 31),
-                created_at TEXT
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL,
+                month         INTEGER NOT NULL CHECK(month BETWEEN -12 AND 12),
+                day           INTEGER NOT NULL CHECK(day BETWEEN 1 AND 31),
+                calendar_type TEXT DEFAULT 'solar' CHECK(calendar_type IN ('solar','lunar')),
+                created_at    TEXT
             );
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
@@ -99,8 +100,39 @@ def init_db():
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v)
             )
         conn.commit()
+        _migrate_anniversaries(conn)
+        conn.commit()
     finally:
         conn.close()
+
+
+def _migrate_anniversaries(conn):
+    """老库 anniversaries 表缺 calendar_type 列 / month CHECK 过严 → 重建表保留数据。
+
+    2026-08-11 v1.0.2 日历功能升级：纪念日支持农历（lunar，闰月存负月如 -6）。
+    旧表 CHECK(month BETWEEN 1 AND 12) 会拒绝负月，必须重建。
+    """
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(anniversaries)").fetchall()]
+    if "calendar_type" in cols:
+        # 结构已新；但旧表 CHECK 仍可能限制 month 负值——SQLite 无法改 CHECK，
+        # 若表定义是旧版（无 calendar_type 时已重建过）则无需处理。
+        return
+    # 旧表：建新表 + 复制数据（month/day 按原样，calendar_type 默认 solar）
+    conn.execute(
+        "CREATE TABLE anniversaries_new ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " name TEXT NOT NULL,"
+        " month INTEGER NOT NULL CHECK(month BETWEEN -12 AND 12),"
+        " day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 31),"
+        " calendar_type TEXT DEFAULT 'solar' CHECK(calendar_type IN ('solar','lunar')),"
+        " created_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO anniversaries_new (id, name, month, day, calendar_type, created_at)"
+        " SELECT id, name, month, day, 'solar', created_at FROM anniversaries"
+    )
+    conn.execute("DROP TABLE anniversaries")
+    conn.execute("ALTER TABLE anniversaries_new RENAME TO anniversaries")
 
 
 # ---------------- 任务 ----------------
@@ -340,13 +372,14 @@ def delete_link(link_id):
 # ---------------- 纪念日 ----------------
 
 
-def create_anniversary(name, month, day):
+def create_anniversary(name, month, day, calendar_type="solar"):
     now = _now()
     conn = get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO anniversaries (name, month, day, created_at) VALUES (?,?,?,?)",
-            (name, int(month), int(day), now),
+            "INSERT INTO anniversaries (name, month, day, calendar_type, created_at)"
+            " VALUES (?,?,?,?,?)",
+            (name, int(month), int(day), calendar_type, now),
         )
         conn.commit()
         return get_anniversary(cur.lastrowid)
@@ -386,18 +419,36 @@ def delete_anniversary(ann_id):
         conn.close()
 
 
-def next_anniversary(month, day, today=None):
-    """计算下次纪念日的日期字符串与剩余天数（公历每年循环）。
+def next_anniversary(month, day, calendar_type="solar", today=None):
+    """计算下次纪念日的阳历日期与剩余天数（每年循环）。
 
-    返回 (date_str, days_left)：date_str 形如 '2026-11-06'；
-    若今天就是纪念日返回 days_left=0。2/29 边界：平年顺延到 2/28。
+    - solar：month/day 是公历月日；2/29 平年顺延 2/28。
+    - lunar：month/day 是农历月日（闰月 month 为负，如 -6=闰六月）；
+      换算成"今天之后最近一次"对应的阳历日期。
+    返回 (date_str, days_left)。若今天就是纪念日返回 days_left=0。
     """
     from datetime import date as _date
     today = today or _date.today()
+
+    if calendar_type == "lunar":
+        from lunar_python import Lunar
+        # 尝试当年：农历(今年, month, day) → 阳历；若已过去 → 明年
+        for y in (today.year, today.year + 1):
+            try:
+                lunar = Lunar.fromYmd(y, month, day)
+                cand = lunar.getSolar()
+                d = _date(cand.getYear(), cand.getMonth(), cand.getDay())
+            except Exception:
+                continue
+            if d >= today:
+                return d.isoformat(), (d - today).days
+        # 兜底（理论上不会到这）：用明年 1/1
+        return f"{today.year + 1}-01-01", 366
+
+    # solar：公历每年循环
     try:
         cand = _date(today.year, month, day)
     except ValueError:
-        # 2/29 在平年不存在 → 落到 2/28
         cand = _date(today.year, month, min(day, 28))
     if cand < today:
         try:

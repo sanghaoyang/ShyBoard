@@ -269,22 +269,36 @@ s, d = req("DELETE", f"/api/anniversaries/{ann_id}")
 check("删除纪念日", s == 200, str(d)[:100])
 s, d = req("DELETE", f"/api/anniversaries/{ann_id}")
 check("删除不存在纪念日 404", s == 404, str(d)[:100])
-# 日历接口：先建带 due_date 任务和纪念日，验证归位
-s, t = req("POST", "/api/tasks", {"title": "QA日历任务", "due_date": "2026-11-06"})
+# 日历接口：阳历纪念日 + 农历纪念日（中秋农历8/15 → 2026-09-25）+ 农历信息
 s, ann = req("POST", "/api/anniversaries", {"name": "QA日历纪念", "month": 11, "day": 6})
+s, ann_lunar = req("POST", "/api/anniversaries", {"name": "QA中秋", "month": 8, "day": 15, "calendar_type": "lunar"})
 import datetime as _dt
 _cur = _dt.date.today()
 _nov = "2026-11" if _cur.year <= 2026 else f"{_cur.year}-11"
 s, d = req("GET", f"/api/calendar?month={_nov}")
-check("日历接口正常", s == 200 and "tasks" in d and "anniversaries" in d, str(d)[:100])
-_day6_tasks = [x for x in d.get("tasks", {}).get("6", []) if x.get("title") == "QA日历任务"]
+check("日历接口正常（含农历）", s == 200 and "anniversaries" in d and "lunar" in d, str(d)[:100])
 _day6_anns = [x for x in d.get("anniversaries", {}).get("6", []) if x.get("name") == "QA日历纪念"]
-check("日历任务归位 11/6", len(_day6_tasks) == 1, str(d.get("tasks"))[:150])
-check("日历纪念日归位 11/6", len(_day6_anns) == 1, str(d.get("anniversaries"))[:150])
+check("阳历纪念日归位 11/6", len(_day6_anns) == 1, str(d.get("anniversaries"))[:150])
+s, d = req("GET", "/api/calendar?month=2026-09")
+_day25_anns = [x for x in d.get("anniversaries", {}).get("25", []) if x.get("name") == "QA中秋"]
+check("农历纪念日归位 9/25（中秋）", len(_day25_anns) == 1, str(d.get("anniversaries"))[:150])
+s, d = req("GET", "/api/calendar?month=2026-08")
+check("日历含农历信息 8/11=六月廿九",
+      d.get("lunar", {}).get("11", {}).get("month") == 6 and d.get("lunar", {}).get("11", {}).get("day") == 29,
+      str(d.get("lunar", {}).get("11"))[:100])
 s, d = req("GET", "/api/calendar?month=2026-13")
 check("非法月份 400", s == 400, str(d)[:100])
-req("DELETE", f"/api/tasks/{t['id']}")
+# 农历纪念日倒计时（中秋 2026-09-25）
+s, d = req("GET", "/api/anniversaries")
+qa_mid = [a for a in d if a.get("name") == "QA中秋"]
+check("农历纪念日含 calendar_type",
+      s == 200 and qa_mid and qa_mid[0].get("calendar_type") == "lunar" and qa_mid[0]["next_date"] == "2026-09-25",
+      str(qa_mid)[:150])
+# 非法日历类型
+s, d = req("POST", "/api/anniversaries", {"name": "QA火星", "month": 1, "day": 1, "calendar_type": "mars"})
+check("非法日历类型 400", s == 400, str(d)[:100])
 req("DELETE", f"/api/anniversaries/{ann['id']}")
+req("DELETE", f"/api/anniversaries/{ann_lunar['id']}")
 
 # ---------- 清理测试数据 ----------
 section("清理")
