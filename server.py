@@ -135,6 +135,20 @@ def tasks_list():
     return jsonify([_task_out(r) for r in rows])
 
 
+def _validate_due_date(value):
+    """校验任务截止日期：空串=无 DDL；非真实 YYYY-MM-DD 返回 None（非法）。"""
+    due = str(value or "").strip()
+    if not due:
+        return ""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", due):
+        try:
+            datetime.strptime(due, "%Y-%m-%d")
+            return due
+        except ValueError:
+            return None
+    return None
+
+
 @app.post("/api/tasks")
 def tasks_create():
     data = request.get_json(silent=True) or {}
@@ -150,13 +164,16 @@ def tasks_create():
     source = data.get("source", "manual")
     if source not in {"manual", "agent"}:
         return jsonify({"error": "source 必须是 manual 或 agent"}), 400
+    due_date = _validate_due_date(data.get("due_date", ""))
+    if due_date is None:
+        return jsonify({"error": "due_date 格式应为 YYYY-MM-DD"}), 400
 
     row = db.create_task(
         title=title,
         description=str(data.get("description", "")).strip(),
         status=status,
         priority=priority,
-        due_date=str(data.get("due_date", "")).strip(),
+        due_date=due_date,
         tags=_parse_tags(data.get("tags")),
         source=source,
     )
@@ -193,7 +210,10 @@ def tasks_update(task_id):
             return jsonify({"error": f"priority 必须是 {sorted(VALID_PRIORITY)}"}), 400
         fields["priority"] = data["priority"]
     if "due_date" in data:
-        fields["due_date"] = str(data["due_date"]).strip()
+        due = _validate_due_date(data["due_date"])
+        if due is None:
+            return jsonify({"error": "due_date 格式应为 YYYY-MM-DD"}), 400
+        fields["due_date"] = due
     if "tags" in data:
         fields["tags"] = _parse_tags(data["tags"])
     updated = db.update_task(task_id, **fields)
@@ -232,6 +252,17 @@ def notes_delete(note_id):
     return jsonify({"ok": True})
 
 
+@app.patch("/api/notes/<int:note_id>")
+def notes_update(note_id):
+    if not db.get_note(note_id):
+        return jsonify({"error": "便签不存在"}), 404
+    data = request.get_json(silent=True) or {}
+    content = str(data.get("content", "")).strip()
+    if not content:
+        return jsonify({"error": "内容不能为空"}), 400
+    return jsonify(db.update_note(note_id, content))
+
+
 # ---------------- 天气 ----------------
 
 @app.get("/api/weather")
@@ -262,22 +293,28 @@ def links_list():
     return jsonify(db.list_links())
 
 
+def _validate_link_url(url):
+    """校验并规范化快捷方式 URL：拒绝 javascript: 等非 http(s) 协议；无协议补 https://。"""
+    url = str(url or "").strip()
+    if not url:
+        return None
+    # 拒绝带协议前缀但不是 http/https/ftp 的（javascript: 等）
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+\-.]*:", url) and not url.startswith(("http://", "https://", "ftp://")):
+        return None
+    if not url.startswith(("http://", "https://", "ftp://")):
+        url = "https://" + url
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return None
+    return url
+
+
 @app.post("/api/links")
 def links_create():
     data = request.get_json(silent=True) or {}
     name = str(data.get("name", "")).strip()
-    url = str(data.get("url", "")).strip()
+    url = _validate_link_url(str(data.get("url", "")))
     if not name or not url:
-        return jsonify({"error": "name 和 url 不能为空"}), 400
-    # 拒绝带协议前缀但不是 http/https 的（javascript: 等）
-    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", url) and not url.startswith(
-        ("http://", "https://", "ftp://")
-    ):
-        return jsonify({"error": "url 必须是 http(s) 地址"}), 400
-    if not url.startswith(("http://", "https://", "ftp://")):
-        url = "https://" + url
-    if not (url.startswith("http://") or url.startswith("https://")):
-        return jsonify({"error": "url 必须是 http(s) 地址"}), 400
+        return jsonify({"error": "name 和 url 不能为空，url 必须是 http(s) 地址"}), 400
     return jsonify(db.create_link(
         name=name,
         url=url,
@@ -295,7 +332,10 @@ def links_update(link_id):
     if "name" in data:
         fields["name"] = str(data["name"]).strip()
     if "url" in data:
-        fields["url"] = str(data["url"]).strip()
+        url = _validate_link_url(str(data["url"]))
+        if not url:
+            return jsonify({"error": "url 必须是 http(s) 地址"}), 400
+        fields["url"] = url
     if "icon" in data:
         fields["icon"] = str(data["icon"]).strip()
     if not fields:
@@ -358,8 +398,18 @@ def anniversaries_list():
     """全部纪念日 + 计算下次阳历日期/剩余天数（solar 公历 / lunar 农历循环）。"""
     items = []
     for a in db.list_anniversaries():
-        date_str, days = db.next_anniversary(
+        ret = db.next_anniversary(
             a["month"], a["day"], a.get("calendar_type", "solar"))
+        if ret is None:
+            # 8 年内无此农历闰月（异常数据）：返回提示而非假日期
+            items.append({
+                "id": a["id"], "name": a["name"],
+                "month": a["month"], "day": a["day"],
+                "calendar_type": a.get("calendar_type", "solar"),
+                "next_date": "", "days_left": None, "note": "暂无此闰月",
+            })
+            continue
+        date_str, days = ret
         items.append({
             "id": a["id"],
             "name": a["name"],
@@ -396,6 +446,33 @@ def anniversaries_create():
     return jsonify(db.create_anniversary(name, month, day, ctype)), 201
 
 
+@app.patch("/api/anniversaries/<int:ann_id>")
+def anniversaries_update(ann_id):
+    existing = db.get_anniversary(ann_id)
+    if not existing:
+        return jsonify({"error": "纪念日不存在"}), 404
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name", existing["name"])).strip()
+    ctype = str(data.get("calendar_type", existing.get("calendar_type", "solar"))).strip()
+    if ctype not in ("solar", "lunar"):
+        return jsonify({"error": "日历类型只能是 solar 或 lunar"}), 400
+    try:
+        month = int(data.get("month", existing["month"]))
+        day = int(data.get("day", existing["day"]))
+    except (TypeError, ValueError):
+        return jsonify({"error": "月份/日期必须是数字"}), 400
+    if not name:
+        return jsonify({"error": "请输入纪念日名称"}), 400
+    if not (1 <= abs(month) <= 12 and 1 <= day <= 31):
+        return jsonify({"error": "日期不合法"}), 400
+    if ctype == "solar":
+        import calendar as _cal
+        if day > _cal.monthrange(2024, month)[1]:
+            return jsonify({"error": "日期不合法"}), 400
+    db.update_anniversary(ann_id, name, month, day, ctype)
+    return jsonify(db.get_anniversary(ann_id))
+
+
 @app.delete("/api/anniversaries/<int:ann_id>")
 def anniversaries_delete(ann_id):
     if not db.get_anniversary(ann_id):
@@ -404,14 +481,48 @@ def anniversaries_delete(ann_id):
     return jsonify({"ok": True})
 
 
+# ---------------- 日记（日历每天记录） ----------------
+
+def _validate_log_date(date):
+    """校验日记日期为真实 YYYY-MM-DD（2026-08-12 code-review #14）。"""
+    date = str(date or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        return None
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return date
+
+
+@app.get("/api/log")
+def log_get():
+    date = _validate_log_date(request.args.get("date", ""))
+    if not date:
+        return jsonify({"error": "date 参数格式应为 YYYY-MM-DD"}), 400
+    log = db.get_log(date)
+    return jsonify(log if log else {"date": date, "content": ""})
+
+
+@app.put("/api/log")
+def log_save():
+    data = request.get_json(silent=True) or {}
+    date = _validate_log_date(data.get("date", ""))
+    if not date:
+        return jsonify({"error": "date 格式应为 YYYY-MM-DD"}), 400
+    content = str(data.get("content", "")).strip()
+    return jsonify(db.save_log(date, content))
+
+
 # ---------------- 日历（月视图：任务 + 纪念日） ----------------
 
 @app.get("/api/calendar")
 def calendar_month():
-    """返回某月每天的任务（due_date 命中）与纪念日（公历循环命中）。
+    """返回某月每天的信息：农历 + 纪念日（solar 公历 / lunar 农历循环命中）。
 
-    ?month=YYYY-MM（缺省当月）。tasks 返回含 id/title/status/priority；
-    anniversaries 返回 id/name。today 返回今天日期字符串。
+    ?month=YYYY-MM（缺省当月）。anniversaries 返回 {日: [{id, name, calendar_type}]}；
+    lunar 返回 {日: {month(负=闰月), day, month_name, day_name}}；today 返回今天日期。
+    任务截止标记已移除（v1.0.2 日历回归纯纪念日，任务改由格子点击弹窗管理）。
     """
     from datetime import date, datetime as _dt
     import calendar as _cal
@@ -426,11 +537,26 @@ def calendar_month():
         return jsonify({"error": "月份格式应为 YYYY-MM"}), 400
     if not (1 <= month <= 12):
         return jsonify({"error": "月份不合法"}), 400
+    # 与前端年月跳转范围一致（2026-08-12 code-review #13）
+    if not (1900 <= year <= 2100):
+        return jsonify({"error": "年份范围应为 1900-2100"}), 400
 
     days_in_month = _cal.monthrange(year, month)[1]
+    # 节日表：公历固定 + 农历固定（闰月不匹配）
+    SOLAR_HOLIDAYS = {
+        (1, 1): "元旦", (2, 14): "情人节", (3, 8): "妇女节", (3, 12): "植树节",
+        (4, 1): "愚人节", (5, 1): "劳动节", (5, 4): "青年节", (6, 1): "儿童节",
+        (7, 1): "建党节", (8, 1): "建军节", (9, 10): "教师节", (10, 1): "国庆节",
+        (12, 24): "平安夜", (12, 25): "圣诞节",
+    }
+    LUNAR_HOLIDAYS = {
+        (1, 1): "春节", (1, 15): "元宵节", (2, 2): "龙抬头", (5, 5): "端午节",
+        (7, 7): "七夕", (8, 15): "中秋节", (9, 9): "重阳节", (12, 8): "腊八节",
+    }
     # 每日农历（阳历日期 → 农历月/日；闰月 month 为负）。key 为字符串日（"1"~"31"）
     from lunar_python import Solar
     lunar_by_day = {}
+    holidays_by_day = {}
     for day in range(1, days_in_month + 1):
         try:
             s = Solar.fromYmd(year, month, day)
@@ -441,6 +567,17 @@ def calendar_month():
                 "month_name": lunar.getMonthInChinese(),
                 "day_name": lunar.getDayInChinese(),
             }
+            # 节日/节气：节气（清明等）+ 公历节日 + 农历节日（闰月不匹配）
+            tags = []
+            jq = (lunar.getJieQi() or "").strip()
+            if jq:
+                tags.append(jq)
+            if (month, day) in SOLAR_HOLIDAYS:
+                tags.append(SOLAR_HOLIDAYS[(month, day)])
+            if lunar.getMonth() > 0 and (lunar.getMonth(), lunar.getDay()) in LUNAR_HOLIDAYS:
+                tags.append(LUNAR_HOLIDAYS[(lunar.getMonth(), lunar.getDay())])
+            if tags:
+                holidays_by_day[str(day)] = tags
         except Exception:
             lunar_by_day[str(day)] = {"month": 0, "day": 0, "month_name": "", "day_name": ""}
     # 纪念日归位：solar 直接按公历月日；lunar 换算当年阳历日期（落在本月才显示）
@@ -461,12 +598,28 @@ def calendar_month():
                         {"id": a["id"], "name": a["name"], "calendar_type": "lunar"})
             except Exception:
                 pass
+    # 待办任务 DDL 标注（v1.0.3 用户要求：只标待办任务的截止日期，进行中/已完成不标）
+    prefix = f"{year}-{month:02d}-"
+    todo_tasks = db.list_tasks(status="todo", include_done=False)
+    tasks_by_day = {}
+    for t in todo_tasks:
+        dd = str(t.get("due_date") or "")
+        # 防御历史脏数据：残缺/非法 due_date 跳过（201 修复：写入端已校验 YYYY-MM-DD）
+        if dd.startswith(prefix) and len(dd) >= 10 and dd[8:10].isdigit():
+            day = int(dd[8:10])
+            if 1 <= day <= 31:
+                tasks_by_day.setdefault(str(day), []).append({"id": t["id"], "title": t["title"]})
+    # 当月写过日记的日期（v1.0.3：保存后日历格子显示 📝 标记）
+    log_days = db.list_log_days(prefix)
     return jsonify({
         "year": year, "month": month, "days": days_in_month,
         "first_weekday": _cal.monthrange(year, month)[0],
         "today": now.strftime("%Y-%m-%d"),
         "lunar": lunar_by_day,
         "anniversaries": anns_by_day,
+        "todo_tasks": tasks_by_day,
+        "holidays": holidays_by_day,
+        "logs": log_days,
     })
 
 
@@ -542,21 +695,21 @@ def settings_get():
 @app.put("/api/settings")
 def settings_update():
     data = request.get_json(silent=True) or {}
-    # 通用设置项（布尔开关等）：confirm_delete_* / autostart
-    SIMPLE_KEYS = {"autostart", "confirm_delete_task", "confirm_delete_link", "confirm_delete_note"}
+    # 通用设置项（布尔开关等）：confirm_delete_*；autostart 不走这里（统一 POST /api/settings/autostart 双写注册表+DB，2026-08-12 code-review #10）
+    SIMPLE_KEYS = {"confirm_delete_task", "confirm_delete_link", "confirm_delete_note", "confirm_delete_ann"}
     for k in SIMPLE_KEYS:
         if k in data:
             db.set_setting(k, "1" if data[k] else "0")
     # 主题色系（pink / dark / light / orange / green）
-    if "theme" in data and str(data["theme"]).strip() in {"pink", "dark", "light", "orange", "green"}:
+    if "theme" in data and str(data["theme"]).strip() in {"pink", "dark", "light", "orange", "green", "teal", "terracotta", "navy", "graphite", "plum"}:
         db.set_setting("theme", str(data["theme"]).strip())
     # 直接给城市代码（前端从搜索结果选定）：city + city_code 一起存
     if "city_code" in data and str(data.get("city_code", "")).strip():
         code = str(data["city_code"]).strip()
-        city = str(data.get("city", "")).strip()
-        if not city:
-            hit = weather.city_by_code(code)
-            city = hit["n"] if hit else ""
+        hit = weather.city_by_code(code)
+        if not hit:
+            return jsonify({"error": "未知城市代码"}), 400
+        city = str(data.get("city", "")).strip() or hit["n"]
         db.set_setting("city_code", code)
         db.set_setting("city", city)
         return jsonify(db.get_all_settings())

@@ -30,7 +30,11 @@ function toast(msg) {
 /* ---------- 设置 ---------- */
 let SETTINGS = {};  // 从 /api/settings 加载；confirm_delete_* 存 "0"/"1"
 
-const THEMES = ["pink", "dark", "light", "orange", "green"];
+const THEMES = ["pink", "dark", "light", "orange", "green", "teal", "terracotta", "navy", "graphite", "plum"];
+const THEME_NAMES = {
+  pink: "灰玫瑰", dark: "暗夜薰衣草", light: "晨雾蓝", orange: "暖杏", green: "鼠尾草",
+  teal: "青碧", terracotta: "赤陶", navy: "藏青", graphite: "石墨", plum: "梅子",
+};
 
 /* 应用主题：body[data-theme] 驱动 CSS 变量切换；pink 是默认，去掉属性 */
 function applyTheme(theme) {
@@ -52,6 +56,7 @@ async function loadSettings() {
     $("#set-confirm-task").checked = s.confirm_delete_task !== "0";
     $("#set-confirm-link").checked = s.confirm_delete_link !== "0";
     $("#set-confirm-note").checked = s.confirm_delete_note !== "0";
+    $("#set-confirm-ann").checked = s.confirm_delete_ann !== "0";
     // 开机自启以注册表为准（首次进入时刷新一次）
     const a = await api("/api/settings/autostart").catch(() => null);
     if (a && typeof a.enabled === "boolean") {
@@ -59,16 +64,6 @@ async function loadSettings() {
       $("#set-autostart").checked = a.enabled;
     }
   } catch (e) { /* 设置加载失败不阻塞 */ }
-}
-
-function openSettings() {
-  loadSettings().then(() => {
-    $("#settings-mask").classList.remove("hidden");
-  });
-}
-
-function closeSettings() {
-  $("#settings-mask").classList.add("hidden");
 }
 
 // 开关变化 → 立即保存
@@ -97,10 +92,8 @@ async function setAutostart(enabled) {
   SETTINGS.autostart = enabled ? "1" : "0";
 }
 
-$("#btn-settings").addEventListener("click", openSettings);
-$("#settings-done").addEventListener("click", closeSettings);
-$("#settings-mask").addEventListener("click", (e) => {
-  if (e.target.id === "settings-mask") closeSettings();
+document.querySelectorAll("#sidenav .nav-item").forEach((b) => {
+  b.addEventListener("click", () => showView(b.dataset.view));
 });
 // 主题切换：立即生效并保存
 $("#theme-picker").addEventListener("click", async (e) => {
@@ -115,7 +108,7 @@ $("#theme-picker").addEventListener("click", async (e) => {
       body: JSON.stringify({ theme }),
     });
     SETTINGS.theme = theme;
-    toast(theme === "dark" ? "已切换到黑色主题" : theme === "light" ? "已切换到白色主题" : theme === "orange" ? "已切换到橙色主题" : theme === "green" ? "已切换到绿色主题" : "已切换到粉色主题");
+    toast(`已切换到${THEME_NAMES[theme] || theme}主题`);
   } catch (err) {
     toast(err.message);
     applyTheme(SETTINGS.theme || "pink");
@@ -124,6 +117,7 @@ $("#theme-picker").addEventListener("click", async (e) => {
 bindSettingSwitch("#set-confirm-task", "confirm_delete_task");
 bindSettingSwitch("#set-confirm-link", "confirm_delete_link");
 bindSettingSwitch("#set-confirm-note", "confirm_delete_note");
+bindSettingSwitch("#set-confirm-ann", "confirm_delete_ann");
 $("#set-autostart").addEventListener("change", async (e) => {
   const val = e.target.checked;
   try {
@@ -192,9 +186,9 @@ function openWeatherModal() {
     </div>`;
   }).join("");
   const metaLines = [
-    `湿度 ${w.humidity}`, `风 ${w.wind}`,
-    w.aqi ? `AQI ${w.aqi}` : "",
-    w.sunrise ? `日出 ${w.sunrise} · 日落 ${w.sunset}` : "",
+    `湿度 ${esc(w.humidity)}`, `风 ${esc(w.wind)}`,
+    w.aqi ? `AQI ${esc(w.aqi)}` : "",
+    w.sunrise ? `日出 ${esc(w.sunrise)} · 日落 ${esc(w.sunset)}` : "",
   ].filter(Boolean);
   $("#modal-body").innerHTML = `
     <div class="weather-now">
@@ -233,7 +227,7 @@ function dueChip(due) {
   if (!due) return "";
   const today = new Date().toISOString().slice(0, 10);
   const cls = due < today ? "due-chip overdue" : "due-chip";
-  return `<span class="${cls}">📅 ${due}</span>`;
+  return `<span class="${cls}">📅 ${esc(due)}</span>`;
 }
 
 function taskCard(t) {
@@ -304,8 +298,8 @@ async function reloadAll() {
   loadTasks();
   loadStats();
   // 日历视图可见 → 重绘日历（任务/纪念日标记变化）
-  const calEl = document.getElementById("cal-view");
-  if (calEl && !calEl.classList.contains("hidden")) loadCalendar();
+  const calEl = document.getElementById("view-calendar");
+  if (calEl && calEl.classList.contains("active")) loadCalendar();
   // 当天任务弹窗开着 → 刷新内容
   if (_dayModalDate && !document.getElementById("modal-mask").classList.contains("hidden")
       && document.getElementById("modal-title")?.textContent === dayTitle(_dayModalDate)) {
@@ -325,7 +319,7 @@ async function refreshAll(auto = true) {
     loadLinks();
     loadWeather();
     loadAnns();
-    if (!$("#cal-view").classList.contains("hidden")) loadCalendar();
+    if ($("#view-calendar").classList.contains("active")) loadCalendar();
   }
 }
 
@@ -491,8 +485,10 @@ async function loadLinks() {
       <div class="link-item" data-url="${esc(l.url)}" data-id="${l.id}">
         <span class="link-icon">${iconHtml(l.icon)}</span>
         <span class="link-name">${esc(l.name)}</span>
+        <button class="link-edit" title="编辑">✏️</button>
         <button class="link-del" title="删除">✕</button>
       </div>`).join("") || `<div class="lane-empty" style="padding:10px 0">暂无快捷方式</div>`;
+    _linksCache = links;
     $("#links").onclick = (e) => {
       const item = e.target.closest(".link-item");
       if (!item) return;
@@ -500,19 +496,33 @@ async function loadLinks() {
         deleteLink(+item.dataset.id);
         return;
       }
+      if (e.target.closest(".link-edit")) {
+        editLink(+item.dataset.id);
+        return;
+      }
       window.open(item.dataset.url, "_blank");
     };
   } catch (e) { /* 忽略 */ }
 }
 
-function openLinkModal() {
-  $("#modal-title").textContent = "添加快捷方式";
+let _linksCache = [];       // 最近一次 loadLinks 的数据（编辑预填用）
+let _editingLinkId = 0;     // 0=新增；>0=编辑中
+
+function editLink(id) {
+  const link = _linksCache.find((l) => l.id === id);
+  if (!link) { toast("找不到该快捷方式"); return; }
+  openLinkModal(id, link);
+}
+
+function openLinkModal(editId = 0, link = null) {
+  _editingLinkId = editId;
+  $("#modal-title").textContent = editId ? "编辑快捷方式" : "添加快捷方式";
   $("#modal-body").innerHTML = `
     <label>名称</label>
-    <input id="l-name" placeholder="例如：GitHub">
+    <input id="l-name" placeholder="例如：GitHub" value="${link ? esc(link.name) : ""}">
     <label>网址</label>
     <div style="display:flex;gap:8px">
-      <input id="l-url" placeholder="https://github.com" style="flex:1">
+      <input id="l-url" placeholder="https://github.com" style="flex:1" value="${link ? esc(link.url) : ""}">
       <button class="btn ghost sm" id="l-fetch" type="button" title="抓取该网站自己的图标">✨ 自动图标</button>
     </div>
     <div id="l-preview" style="display:none;margin-top:10px">
@@ -520,12 +530,12 @@ function openLinkModal() {
       <span id="l-preview-name" style="font-size:12px;color:var(--text-dim);margin-left:8px"></span>
     </div>
     <label>图标（emoji 或自动抓取，可选）</label>
-    <input id="l-icon" placeholder="🐙">
+    <input id="l-icon" placeholder="🐙" value="${link ? esc(link.icon || "") : ""}">
     <div id="l-fetch-status" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>`;
   openModal();
   $("#l-fetch").addEventListener("click", fetchLinkIcon);
-  // 输入网址后回车直接抓图标
-  $("#l-url").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fetchLinkIcon(); } });
+    // 输入网址后回车直接抓图标
+    $("#l-url").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fetchLinkIcon(); } });
 }
 
 let _fetchedIcon = "";  // 自动抓取到的图标路径（未保存前暂存）
@@ -565,14 +575,16 @@ function saveLink() {
   if (!name || !url) { toast("名称和网址不能为空"); return; }
   // 优先用自动抓取到的图标；用户手动改了则用输入框内容
   const icon = $("#l-icon").value.trim();
-  api("/api/links", {
-    method: "POST",
+  const isEdit = _editingLinkId > 0;
+  api(isEdit ? `/api/links/${_editingLinkId}` : "/api/links", {
+    method: isEdit ? "PATCH" : "POST",
     body: JSON.stringify({ name, url, icon }),
   }).then(() => {
     closeModal();
     _fetchedIcon = "";
+    _editingLinkId = 0;
     loadLinks();
-    toast("已添加");
+    toast(isEdit ? "已保存" : "已添加");
   }).catch((e) => toast(e.message));
 }
 
@@ -588,17 +600,29 @@ async function deleteLink(id) {
 async function loadNotes() {
   try {
     const notes = await api("/api/notes");
+    _notesCache = notes;
     $("#notes").innerHTML = notes.map((n) => `
       <div class="note-item">${esc(n.content)}
-        <button class="note-del" onclick="deleteNote(${n.id})">✕</button>
+        <button class="note-edit" onclick="editNote(${n.id})" title="编辑">✏️</button>
+        <button class="note-del" onclick="deleteNote(${n.id})" title="删除">✕</button>
         <span class="note-time">${esc(n.created_at.slice(5, 16))}</span>
       </div>`).join("") || `<div class="lane-empty" style="padding:10px 0">暂无便签</div>`;
   } catch (e) { /* 忽略 */ }
 }
 
-function openNoteModal() {
-  $("#modal-title").textContent = "新建便签";
-  $("#modal-body").innerHTML = `<textarea id="n-content" placeholder="随手记点什么…"></textarea>`;
+let _notesCache = [];       // 最近一次 loadNotes 的数据（编辑预填用）
+let _editingNoteId = 0;     // 0=新增；>0=编辑中
+
+function editNote(id) {
+  const note = _notesCache.find((n) => n.id === id);
+  if (!note) { toast("找不到该便签"); return; }
+  openNoteModal(id, note.content);
+}
+
+function openNoteModal(editId = 0, content = "") {
+  _editingNoteId = editId;
+  $("#modal-title").textContent = editId ? "编辑便签" : "新建便签";
+  $("#modal-body").innerHTML = `<textarea id="n-content" placeholder="随手记点什么…">${esc(content)}</textarea>`;
   openModal();
   setTimeout(() => $("#n-content").focus(), 50);
 }
@@ -606,11 +630,13 @@ function openNoteModal() {
 function saveNote() {
   const content = $("#n-content").value.trim();
   if (!content) { toast("便签内容不能为空"); return; }
-  api("/api/notes", {
-    method: "POST",
+  const isEdit = _editingNoteId > 0;
+  api(isEdit ? `/api/notes/${_editingNoteId}` : "/api/notes", {
+    method: isEdit ? "PATCH" : "POST",
     body: JSON.stringify({ content }),
   }).then(() => {
     closeModal();
+    _editingNoteId = 0;
     loadNotes();
     toast("已保存便签");
   }).catch((e) => toast(e.message));
@@ -626,10 +652,25 @@ async function deleteNote(id) {
 
 /* ---------- 纪念日 ---------- */
 const ANN_EMOJI = "🎂";
+const LUNAR_MONTH_CN = ["", "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"];
+const LUNAR_DAY_CN = [
+  "", "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+  "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+  "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十",
+];
+function lunarDateCn(month, day) {
+  const m = LUNAR_MONTH_CN[Math.abs(month)] || "";
+  const d = LUNAR_DAY_CN[day] || `${day}日`;
+  return `${month < 0 ? "闰" : ""}${m}月${d}`;
+}
+
+let _annsCache = [];       // 最近一次 loadAnns 的数据（编辑预填用）
+let _editingAnnId = 0;     // 0=新增；>0=编辑中
 
 async function loadAnns() {
   try {
     const items = await api("/api/anniversaries");
+    _annsCache = items;
     if (!items.length) {
       $("#anns").innerHTML = `<div class="ann-empty">暂无纪念日，点 ＋ 添加</div>`;
       return;
@@ -643,7 +684,7 @@ async function loadAnns() {
       const typeTag = a.calendar_type === "lunar"
         ? `<span class="ann-type-tag">农历</span>` : "";
       const dateText = a.calendar_type === "lunar"
-        ? `农历${Math.abs(a.month)}月${a.day}日${a.month < 0 ? "（闰）" : ""}`
+        ? `农历${lunarDateCn(a.month, a.day)}`
         : `${a.month}/${a.day}`;
       return `
         <div class="ann-item ${isToday ? "ann-today" : ""}" data-id="${a.id}">
@@ -652,32 +693,49 @@ async function loadAnns() {
             <div class="ann-name">${esc(a.name)}${typeTag}</div>
             <div class="ann-days">${dateText} · ${label}</div>
           </span>
+          <button class="ann-edit" title="编辑">✏️</button>
           <button class="ann-del" title="删除">✕</button>
         </div>`;
     }).join("");
     $("#anns").onclick = async (e) => {
-      const del = e.target.closest(".ann-del");
-      if (!del) return;
-      const id = +del.closest(".ann-item").dataset.id;
-      if (SETTINGS.confirm_delete_note !== "0") {
-        if (!await confirmDialog("删除这个纪念日？", { okText: "删除", title: "删除纪念日" })) return;
-      }
+      const item = e.target.closest(".ann-item");
+      if (!item) return;
+      const id = +item.dataset.id;
+      if (e.target.closest(".ann-edit")) { editAnn(id); return; }
+      if (!e.target.closest(".ann-del")) return;
+      // 删除是否确认由设置控制（confirm_delete_ann，默认确认；用户 2026-08-12 要求做成设置项）
+      if (SETTINGS.confirm_delete_ann !== "0" && !await confirmDialog("删除这个纪念日？", { okText: "删除", title: "删除纪念日" })) return;
       try { await api(`/api/anniversaries/${id}`, { method: "DELETE" }); loadAnns(); loadCalendar(); }
       catch (err) { toast(err.message); }
     };
   } catch (e) { /* 忽略 */ }
 }
 
-function openAnnModal(fromDay = false) {
-  // 非当天弹窗来源 → 清空来源标记（避免 saveAnn 误回弹窗）
-  if (!fromDay) _dayModalDate = "";
-  $("#modal-title").textContent = "添加纪念日";
+function editAnn(id) {
+  const ann = _annsCache.find((a) => a.id === id);
+  if (!ann) { toast("找不到该纪念日"); return; }
+  _dayModalDate = "";  // 编辑不从某天进入，避免保存后误回当天弹窗
+  openAnnModal(false, id, ann);
+}
+
+function openAnnModal(fromDay = false, editId = 0, ann = null) {
+  _editingAnnId = editId;
+  // 非编辑/非当天弹窗来源 → 清空来源标记（避免 saveAnn 误回弹窗）
+  if (!fromDay && !editId) _dayModalDate = "";
+  const isEdit = editId > 0;
+  $("#modal-title").textContent = isEdit ? "编辑纪念日" : "添加纪念日";
+  // 编辑：预填名称/日期/类型
+  const pName = ann ? esc(ann.name) : "";
+  const pMonth = ann ? ann.month : 1;      // 农历闰月为负
+  const pDay = ann ? ann.day : 1;
+  const pType = ann ? ann.calendar_type : "solar";
   // 从某天进入：日期固定为那天，只需选农历/阳历 + 名称
   let datePart = `
     <label>日期（每年循环）</label>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="a-month" style="flex:1">
         ${Array.from({length:12}, (_,i)=>`<option value="${i+1}">${i+1} 月</option>`).join("")}
+        ${pMonth < 0 ? `<option value="${pMonth}" selected>闰${Math.abs(pMonth)} 月</option>` : ""}
       </select>
       <select id="a-day" style="flex:1">
         ${Array.from({length:31}, (_,i)=>`<option value="${i+1}">${i+1} 日</option>`).join("")}
@@ -692,14 +750,20 @@ function openAnnModal(fromDay = false) {
   }
   $("#modal-body").innerHTML = `
     <label>名称</label>
-    <input id="a-name" placeholder="例如：老妈生日" maxlength="30">
+    <input id="a-name" placeholder="例如：老妈生日" maxlength="30" value="${pName}">
     ${datePart}
     <label>日历类型</label>
     <div style="display:flex;gap:8px" id="a-type-row">
-      <button type="button" class="btn ghost sm ann-type-btn active" data-type="solar">阳历</button>
-      <button type="button" class="btn ghost sm ann-type-btn" data-type="lunar">农历</button>
+      <button type="button" class="btn ghost sm ann-type-btn ${pType === "solar" ? "active" : ""}" data-type="solar">阳历</button>
+      <button type="button" class="btn ghost sm ann-type-btn ${pType === "lunar" ? "active" : ""}" data-type="lunar">农历</button>
     </div>
     <div style="font-size:12px;color:var(--text-dim);margin-top:6px" id="a-type-hint"></div>`;
+  // 编辑预填：选中月份/日期（闰月负值已在 option 中选中）
+  const ms = $("#a-month"), ds = $("#a-day");
+  if (isEdit && ms && ms.tagName === "SELECT") {
+    ms.value = String(pMonth);
+    ds.value = String(pDay);
+  }
   openModal();
   $("#a-name").focus();
   // 类型切换：农历时若从某天进入，把日期换算成农历月日
@@ -712,7 +776,7 @@ function openAnnModal(fromDay = false) {
         const cal = await api(`/api/calendar?month=${calKey(y, m)}`);
         const lun = cal.lunar && cal.lunar[String(d)];
         if (lun && lun.month) {
-          hint.textContent = `该日农历为 ${Math.abs(lun.month)}月${lun.day}日${lun.month < 0 ? "（闰月）" : ""}，将按每年农历这天循环`;
+          hint.textContent = `该日农历为 ${lunarDateCn(lun.month, lun.day)}，将按每年农历这天循环`;
         }
       } catch (e) { hint.textContent = ""; }
     } else if (t === "solar" && _dayModalDate) {
@@ -746,11 +810,13 @@ async function saveAnn() {
       }
     } catch (e) { /* 保持阳历值 */ }
   }
+  const isEdit = _editingAnnId > 0;
   try {
-    await api("/api/anniversaries", {
-      method: "POST",
+    await api(isEdit ? `/api/anniversaries/${_editingAnnId}` : "/api/anniversaries", {
+      method: isEdit ? "PATCH" : "POST",
       body: JSON.stringify({ name, month: storeMonth, day: storeDay, calendar_type: ctype }),
     });
+    _editingAnnId = 0;
     loadAnns();
     loadCalendar();
     // 从日历某天进入 → 保存后回到当天弹窗（能看到新纪念日）
@@ -759,7 +825,7 @@ async function saveAnn() {
     } else {
       closeModal();
     }
-    toast("已添加纪念日");
+    toast(isEdit ? "已保存纪念日" : "已添加纪念日");
   } catch (e) { toast(e.message); }
 }
 
@@ -773,40 +839,75 @@ function todayYM() {
 
 function calKey(y, m) { return `${y}-${String(m).padStart(2, "0")}`; }
 
+let _calReqSeq = 0;  // 日历请求序号：丢弃过期响应（连续年月跳转竞态）
 async function loadCalendar() {
   const ym = _calYM || todayYM();
+  const url = `/api/calendar?month=${calKey(ym.year, ym.month)}`;
+  const seq = ++_calReqSeq;
   try {
-    const d = await api(`/api/calendar?month=${calKey(ym.year, ym.month)}`);
-    $("#cal-title").textContent = `${d.year}年${d.month}月`;
-    const cells = [];
-    const pad = d.first_weekday;  // 0=周日
-    for (let i = 0; i < pad; i++) cells.push(`<div class="cal-cell out"></div>`);
-    for (let day = 1; day <= d.days; day++) {
-      const dateStr = `${d.year}-${String(d.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const isToday = dateStr === d.today;
-      const anns = d.anniversaries[day] || [];
-      const lun = d.lunar && d.lunar[day] || { month: 0, day: 0, month_name: "", day_name: "" };
-      // 农历显示：初一显示"六月初一"（含月名），其余显示"廿九"
-      const lunarText = lun.day === 1
-        ? `${lun.month_name}月${lun.day_name}`
-        : lun.day_name;
-      const annHtml = anns.map((a) => `<div class="cal-ann" title="${esc(a.name)}">🎂 ${esc(a.name)}</div>`).join("");
-      cells.push(`
-        <div class="cal-cell ${isToday ? "today" : ""}" data-date="${dateStr}">
-          <div class="cal-daynum">${day}<span class="cal-lunar">${lunarText}</span></div>
-          ${annHtml}
-        </div>`);
-    }
-    const total = pad + d.days;
-    const rem = (7 - total % 7) % 7;
-    for (let i = 0; i < rem; i++) cells.push(`<div class="cal-cell out"></div>`);
-    $("#cal-grid").innerHTML = cells.join("");
-    // 点击某天 → 当天任务管理弹窗（非 out 占位格）
-    $("#cal-grid").onclick = (e) => {
-      const cell = e.target.closest(".cal-cell");
-      if (cell && cell.dataset.date) openDayModal(cell.dataset.date);
-    };
-  } catch (e) { toast(e.message); }
+    const d = await api(url);
+    if (seq !== _calReqSeq) return;
+    renderCal(d);
+  } catch (e) {
+    if (seq !== _calReqSeq) return;
+    // 瞬时网络错误（如服务刚启动/端口抖动）：稍候自动重试一次，避免直接报 fail to fetch
+    try {
+      await new Promise((r) => setTimeout(r, 500));
+      if (seq !== _calReqSeq) return;
+      renderCal(await api(url));
+    } catch (e2) { toast(e2.message); }
+  }
+}
+
+function renderCal(d) {
+  // 同步年月跳转下拉
+  const ys = $("#cal-year"), ms = $("#cal-month");
+  if (ys && ms) { ys.value = d.year; ms.value = d.month; }
+  const cells = [];
+  const pad = d.first_weekday;  // 0=周日
+  for (let i = 0; i < pad; i++) cells.push(`<div class="cal-cell out"></div>`);
+  for (let day = 1; day <= d.days; day++) {
+    const dateStr = `${d.year}-${String(d.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const isToday = dateStr === d.today;
+    const anns = d.anniversaries[day] || [];
+    const lun = d.lunar && d.lunar[day] || { month: 0, day: 0, month_name: "", day_name: "" };
+    // 农历显示：初一显示"六月初一"（含月名），其余显示"廿九"
+    const lunarText = lun.day === 1
+      ? `${lun.month_name}月${lun.day_name}`
+      : lun.day_name;
+    const annHtml = anns.map((a) => `<div class="cal-ann" title="${esc(a.name)}">🎂 ${esc(a.name)}</div>`).join("");
+    // 节日/节气标识（国庆/清明/24 节气等）——放日期右边，颜色用主题变量
+    const hol = (d.holidays && d.holidays[day]) || [];
+    const holHtml = hol.map((h) => `<span class="cal-holiday" title="${esc(h)}">${esc(h)}</span>`).join("");
+    // 当天日记文本（直接在格子里显示，截断一行）
+    const logContent = (d.logs && d.logs[day]) || "";
+    const logHtml = logContent
+      ? `<div class="cal-log" title="${esc(logContent)}">${esc(logContent)}</div>`
+      : "";
+    // 待办任务 DDL 标注（未过期主题色 / 过期实心红，颜色跟随主题）
+    const todoTasks = (d.todo_tasks && d.todo_tasks[day]) || [];
+    const ddlHtml = todoTasks.length
+      ? `<div class="cal-ddl ${dateStr < d.today ? "ddl-overdue" : "ddl-soon"}" title="${todoTasks.map((t) => esc(t.title)).join("、")}">${todoTasks.length} 个任务截止</div>`
+      : "";
+    cells.push(`
+      <div class="cal-cell ${isToday ? "today" : ""}" data-date="${dateStr}">
+        <div class="cal-daynum">${day}<span class="cal-lunar">${lunarText}</span>
+          ${holHtml ? `<span class="cal-holidays">${holHtml}</span>` : ""}
+        </div>
+        ${ddlHtml}
+        ${annHtml}
+        ${logHtml}
+      </div>`);
+  }
+  const total = pad + d.days;
+  const rem = (7 - total % 7) % 7;
+  for (let i = 0; i < rem; i++) cells.push(`<div class="cal-cell out"></div>`);
+  $("#cal-grid").innerHTML = cells.join("");
+  // 点击某天 → 当天任务管理弹窗（非 out 占位格）
+  $("#cal-grid").onclick = (e) => {
+    const cell = e.target.closest(".cal-cell");
+    if (cell && cell.dataset.date) openDayModal(cell.dataset.date);
+  };
 }
 
 /* 当天任务管理弹窗：查看当天任务 + 添加当天任务 + 添加当天纪念日 */
@@ -821,7 +922,10 @@ async function loadDayModal() {
   if (!_dayModalDate) return;
   const ym = { year: +_dayModalDate.slice(0, 4), month: +_dayModalDate.slice(5, 7) };
   try {
-    const cal = await api(`/api/calendar?month=${calKey(ym.year, ym.month)}`);
+    const [cal, log] = await Promise.all([
+      api(`/api/calendar?month=${calKey(ym.year, ym.month)}`),
+      api(`/api/log?date=${_dayModalDate}`),
+    ]);
     const day = String(+_dayModalDate.slice(8, 10));
     const anns = cal.anniversaries[day] || [];
     const lun = (cal.lunar && cal.lunar[day]) || { month: 0, day: 0, month_name: "", day_name: "" };
@@ -829,15 +933,37 @@ async function loadDayModal() {
       <div class="cal-day-ann">🎂 ${esc(a.name)}${a.calendar_type === "lunar" ? "（农历）" : ""}</div>`).join("")
       : "";
     const lunarLine = lun.day ? ` · 农历${lun.month_name}月${lun.day_name}` : "";
-    $("#modal-title").textContent = dayTitle(_dayModalDate);
+    // 当天待办 DDL 任务（只读展示，联动标注）
+    const dayTasks = (cal.todo_tasks && cal.todo_tasks[day]) || [];
+    const taskHtml = dayTasks.length ? dayTasks.map((t) => `
+      <div class="cal-day-task"><span class="cal-day-task-dot"></span>${esc(t.title)}</div>`).join("")
+      : "";
+    // 标题右侧放"设为纪念日"（右上角）；正文只留文本框
+    $("#modal-title").innerHTML = `<span style="flex:1">${dayTitle(_dayModalDate)}</span><button class="btn ghost sm" id="day-add-ann">🎂 设为纪念日</button>`;
     $("#modal-body").innerHTML = `
       <div class="cal-day-lunar">${lunarLine.replace(" · 农历", "")}</div>
       ${annHtml ? `<div class="cal-day-anns">${annHtml}</div>` : ""}
-      <div style="margin-top:10px">
-        <button class="btn primary sm" id="day-add-ann">🎂 设为纪念日</button>
-      </div>`;
+      ${taskHtml ? `<div class="cal-day-tasks">${taskHtml}</div>` : ""}
+      <label style="display:block;margin-top:10px">今天记录</label>
+      <textarea id="day-log-input" placeholder="今天发生了什么？记点什么…" maxlength="2000"></textarea>`;
+    $("#day-log-input").value = log && log.content ? log.content : "";
     openModal();
     $("#day-add-ann").addEventListener("click", () => openAnnModalFromDay(_dayModalDate));
+  } catch (e) { toast(e.message); }
+}
+
+/* 保存当天日记（全局：modal 确定按钮也走这里） */
+async function saveDayLog() {
+  const input = document.getElementById("day-log-input");
+  if (!input) return;
+  const content = input.value.trim();
+  try {
+    await api("/api/log", {
+      method: "PUT",
+      body: JSON.stringify({ date: _dayModalDate, content }),
+    });
+    loadCalendar();  // 刷新日历：当天格子里直接显示记录文本
+    toast(content ? "已保存今天记录" : "已清空今天记录");
   } catch (e) { toast(e.message); }
 }
 
@@ -866,13 +992,35 @@ async function calNext() {
 }
 function calToday() { _calYM = null; loadCalendar(); }
 
-function switchView(view) {
-  const tasksView = view === "tasks";
-  $("#lanes").style.display = tasksView ? "grid" : "none";
-  $("#cal-view").classList.toggle("hidden", tasksView);
-  $("#tab-tasks").classList.toggle("active", tasksView);
-  $("#tab-calendar").classList.toggle("active", !tasksView);
-  if (!tasksView) loadCalendar();
+/* 年月跳转选择器（lunar_python 支持 1900-2100） */
+const _CAL_YEAR_MIN = 1900, _CAL_YEAR_MAX = 2100;
+function initCalYMSelects() {
+  const ys = $("#cal-year"), ms = $("#cal-month");
+  if (!ys || !ms) return;
+  ys.innerHTML = Array.from({ length: _CAL_YEAR_MAX - _CAL_YEAR_MIN + 1 }, (_, i) =>
+    `<option value="${_CAL_YEAR_MIN + i}">${_CAL_YEAR_MIN + i} 年</option>`).join("");
+  ms.innerHTML = Array.from({ length: 12 }, (_, i) =>
+    `<option value="${i + 1}">${i + 1} 月</option>`).join("");
+  const jump = () => {
+    _calYM = { year: +ys.value, month: +ms.value };
+    loadCalendar();
+  };
+  ys.addEventListener("change", jump);
+  ms.addEventListener("change", jump);
+}
+
+/* 左侧菜单切换视图（LX Music 风格，v1.0.3 重构） */
+function showView(name) {
+  document.querySelectorAll(".view").forEach((v) => {
+    v.classList.toggle("active", v.id === "view-" + name);
+  });
+  document.querySelectorAll("#sidenav .nav-item").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === name);
+  });
+  // 进入视图时刷新对应数据
+  if (name === "tasks") { loadTasks(); loadStats(); }
+  else if (name === "calendar") { loadCalendar(); loadAnns(); }
+  else if (name === "settings") loadSettings();
 }
 
 /* ---------- 弹窗 ---------- */
@@ -1231,19 +1379,23 @@ $("#pomo-start").addEventListener("click", pomoStartClick);
 $("#pomo-skip").addEventListener("click", pomoSkipClick);
 $(".add-link-btn").addEventListener("click", openLinkModal);
 $(".add-note-btn").addEventListener("click", openNoteModal);
-$(".add-ann-btn").addEventListener("click", openAnnModal);
+$("#cal-add-ann-btn").addEventListener("click", () => openAnnModal(false));
 $("#cal-prev").addEventListener("click", calPrev);
 $("#cal-next").addEventListener("click", calNext);
 $("#cal-today-btn").addEventListener("click", calToday);
-$("#tab-tasks").addEventListener("click", () => switchView("tasks"));
-$("#tab-calendar").addEventListener("click", () => switchView("calendar"));
+initCalYMSelects();
 $("#modal-cancel").addEventListener("click", closeModal);
 $("#modal-ok").addEventListener("click", () => {
   const title = $("#modal-title").textContent;
   if (title === "编辑任务") saveTaskEdit();
-  else if (title === "添加快捷方式") saveLink();
-  else if (title === "新建便签") saveNote();
-  else if (title === "添加纪念日") saveAnn();
+  else if (title === "添加快捷方式" || title === "编辑快捷方式") saveLink();
+  else if (title === "新建便签" || title === "编辑便签") saveNote();
+  else if (title === "添加纪念日" || title === "编辑纪念日") saveAnn();
+  else if (/^\d{4}年\d{1,2}月\d{1,2}日/.test(title)) {
+    // 当天记录弹窗（title 以日期开头，右侧有设为纪念日按钮）：确定 = 保存日记并关闭
+    saveDayLog();
+    closeModal();
+  }
   // 修改城市走 suggest-item 回调，确定按钮无操作
 });
 $("#modal-mask").addEventListener("click", (e) => {

@@ -6,7 +6,7 @@ rem 用法：先 build.bat 已有 dist\ShyBoard\（update.ps1 等随正式版一
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
-    echo [ERROR] .venv not found. Run: uv venv .venv --python 3.11 ^&^& uv pip install --python .venv/Scripts/python.exe flask pywebview
+    echo [ERROR] .venv not found. Run: uv venv .venv --python 3.11 ^&^& uv pip install --python .venv/Scripts/python.exe -r requirements.txt
     pause
     exit /b 1
 )

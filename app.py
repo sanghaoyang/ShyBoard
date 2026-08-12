@@ -35,7 +35,7 @@ PREFERRED_PORT = 17890
 HEALTH_PATH = "/api/health"
 
 # 应用版本：发布时手动递增，与 GitHub Release tag 对应（如 v1.1.0）
-APP_VERSION = "1.0.2"
+APP_VERSION = "2.0.0"
 
 # 测试版标识：exe 名含 "Beta"（如 ShyBoardBeta.exe）即为测试版——
 # 隐藏顶栏 ⬆ 自动更新按钮（测试版不走 GitHub release 更新），顶栏显示 Beta 徽标。
@@ -173,9 +173,11 @@ def _boot_and_goto(window, port):
             break
         time.sleep(0.1)
     # WebView2 初始化与 Flask 并行，load_url 可能早于浏览器就绪，重试兜底
+    # 加 ?v=版本号：WebView2 持久缓存（data/webview）可能缓存旧 HTML/JS，
+    # 版本变化时换 URL 强制拉新页面，避免"改完代码还是旧行为"的假象
     for _ in range(50):
         try:
-            window.load_url(f"http://127.0.0.1:{port}/")
+            window.load_url(f"http://127.0.0.1:{port}/?v={APP_VERSION}")
             return
         except Exception:
             time.sleep(0.1)

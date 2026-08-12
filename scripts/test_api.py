@@ -4,11 +4,16 @@
 用法: ./.venv/Scripts/python scripts/test_api.py
 """
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+
+# 让测试脚本能 import 项目根目录的 db（闰月倒计时边界测试用）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import db  # noqa: E402
 
 BASE = "http://127.0.0.1:17891"
 
@@ -140,6 +145,12 @@ s, d = req("POST", "/api/notes", {"content": "长" * 1000})
 check("超长便签可创建", s == 201 and len(d["content"]) == 1000, str(d)[:80])
 s, d = req("GET", "/api/notes")
 check("便签列表", s == 200 and isinstance(d, list) and len(d) >= 2, str(d)[:80])
+s, d = req("PATCH", f"/api/notes/{nid}", {"content": "QA便签已编辑"})
+check("编辑便签", s == 200 and d.get("content") == "QA便签已编辑", str(d)[:80])
+s, d = req("PATCH", f"/api/notes/{nid}", {"content": ""})
+check("编辑便签空内容 400", s == 400, str(d))
+s, d = req("PATCH", "/api/notes/999999", {"content": "x"})
+check("编辑不存在便签 404", s == 404, str(d))
 s, d = req("DELETE", f"/api/notes/{nid}")
 check("删除便签", s == 200 and d.get("ok"), str(d))
 s, d = req("DELETE", f"/api/notes/{nid}")
@@ -161,6 +172,10 @@ check("非数字 sort_order 不崩溃", s == 201, str(d))
 s, d = req("GET", "/api/links")
 
 check("链接列表", s == 200 and isinstance(d, list) and len(d) >= 1, str(d)[:80])
+s, d = req("PATCH", f"/api/links/{lid}", {"name": "QA站改名", "icon": "🖥️"})
+check("编辑链接", s == 200 and d.get("name") == "QA站改名" and d.get("icon") == "🖥️", str(d)[:80])
+s, d = req("PATCH", "/api/links/999999", {"name": "x"})
+check("编辑不存在链接 404", s == 404, str(d))
 s, d = req("DELETE", f"/api/links/{lid}")
 check("删除链接", s == 200 and d.get("ok"), str(d))
 s, d = req("DELETE", f"/api/links/{lid}")
@@ -194,6 +209,12 @@ s, d = req("PUT", "/api/settings", {"city": "亚特兰蒂斯"})
 check("未知城市 404", s == 404, str(d))
 s, d = req("PUT", "/api/settings", {"city_code": "101020100", "city": "上海"})
 check("切回上海", s == 200 and d.get("city") == "上海", str(d)[:100])
+s, d = req("PUT", "/api/settings", {"confirm_delete_ann": False})
+check("关闭纪念日删除确认", s == 200 and d.get("confirm_delete_ann") == "0", str(d)[:100])
+s, d = req("GET", "/api/settings")
+check("读回纪念日确认关闭", s == 200 and d.get("confirm_delete_ann") == "0", str(d)[:100])
+s, d = req("PUT", "/api/settings", {"confirm_delete_ann": True})
+check("恢复纪念日删除确认", s == 200 and d.get("confirm_delete_ann") == "1", str(d)[:100])
 
 # ---------- 7. 统计一致性 ----------
 section("7. 统计")
@@ -297,8 +318,117 @@ check("农历纪念日含 calendar_type",
 # 非法日历类型
 s, d = req("POST", "/api/anniversaries", {"name": "QA火星", "month": 1, "day": 1, "calendar_type": "mars"})
 check("非法日历类型 400", s == 400, str(d)[:100])
+# 编辑纪念日（PATCH）
+s, d = req("PATCH", f"/api/anniversaries/{ann['id']}", {"name": "QA生日改名", "month": 12, "day": 25, "calendar_type": "solar"})
+check("编辑纪念日", s == 200 and d.get("name") == "QA生日改名" and d.get("month") == 12, str(d)[:100])
+s, d = req("PATCH", f"/api/anniversaries/{ann['id']}", {"name": "", "month": 1, "day": 1})
+check("编辑纪念日空名称 400", s == 400, str(d)[:100])
+s, d = req("PATCH", "/api/anniversaries/999999", {"name": "x", "month": 1, "day": 1})
+check("编辑不存在纪念日 404", s == 404, str(d)[:100])
+# 编辑为农历闰月（month 负值）
+s, d = req("PATCH", f"/api/anniversaries/{ann['id']}", {"name": "QA闰月纪念", "month": -6, "day": 15, "calendar_type": "lunar"})
+check("编辑为农历闰月", s == 200 and d.get("month") == -6 and d.get("calendar_type") == "lunar", str(d)[:100])
 req("DELETE", f"/api/anniversaries/{ann['id']}")
 req("DELETE", f"/api/anniversaries/{ann_lunar['id']}")
+
+# ---------- 11. 日记（日历每天记录） + 日历待办 DDL 标注 ----------
+section("11. 日记与日历待办标注")
+s, d = req("GET", "/api/log?date=2026-08-13")
+check("空日记返回空内容", s == 200 and d.get("content") == "", str(d)[:100])
+s, d = req("PUT", "/api/log", {"date": "2026-08-13", "content": "QA今天测试记录"})
+check("保存日记", s == 200 and d.get("content") == "QA今天测试记录", str(d)[:100])
+s, d = req("GET", "/api/log?date=2026-08-13")
+check("读回日记", s == 200 and d.get("content") == "QA今天测试记录", str(d)[:100])
+s, d = req("PUT", "/api/log", {"date": "2026-08-13", "content": "QA覆盖记录"})
+check("覆盖日记", s == 200 and d.get("content") == "QA覆盖记录", str(d)[:100])
+s, d = req("GET", "/api/calendar?month=2026-08")
+check("日历 logs 含 13 日内容", s == 200 and d.get("logs", {}).get("13") == "QA覆盖记录", str(d.get("logs"))[:100])
+s, d = req("PUT", "/api/log", {"date": "2026-08-13", "content": ""})
+check("清空日记", s == 200 and d.get("content") == "", str(d)[:100])
+s, d = req("PUT", "/api/log", {"date": "2026-8-1", "content": "x"})
+check("非法日期格式 400", s == 400, str(d)[:100])
+s, d = req("GET", "/api/log?date=2026-08")
+check("非法 date 参数 400", s == 400, str(d)[:100])
+# 日历待办 DDL 标注：todo 带 due_date 显示，done/doing 不显示
+s, td = req("POST", "/api/tasks", {"title": "QA日历DDL任务", "due_date": "2026-08-15"})
+check("创建带 DDL 的待办任务", s == 201, str(td)[:100])
+s, td2 = req("POST", "/api/tasks", {"title": "QA日历进行中", "status": "doing", "due_date": "2026-08-15"})
+check("创建进行中任务", s == 201, str(td2)[:100])
+s, d = req("GET", "/api/calendar?month=2026-08")
+q15 = d.get("todo_tasks", {}).get("15", [])
+check("日历显示待办 DDL（含标题）",
+      s == 200 and any(t["title"] == "QA日历DDL任务" for t in q15), str(q15)[:120])
+check("日历不含进行中任务", not any(t["title"] == "QA日历进行中" for t in q15), str(q15)[:120])
+s, d = req("GET", "/api/calendar?month=2026-09")
+check("其他月无该 DDL", s == 200 and "15" not in d.get("todo_tasks", {}), str(d.get("todo_tasks"))[:80])
+# 节日/节气（动态计算：清明/中秋/春节随年份变，农历节日要换算公历；国庆 10/1 公历固定）
+import datetime as _dt
+from lunar_python import Solar as _Solar, Lunar as _Lunar
+_cur_year = _dt.date.today().year
+_qm = None
+for _d in range(1, 31):
+    if _Solar.fromYmd(_cur_year, 4, _d).getLunar().getJieQi() == "清明":
+        _qm = _d
+        break
+s, d = req("GET", f"/api/calendar?month={_cur_year}-04")
+check("清明节气标识（动态）", s == 200 and _qm and "清明" in d.get("holidays", {}).get(str(_qm), []), f"qm={_qm} {str(d.get('holidays', {}).get(str(_qm)))[:60]}")
+_mid = _Lunar.fromYmd(_cur_year, 8, 15).getSolar()
+s, d = req("GET", f"/api/calendar?month={_mid.getYear()}-{_mid.getMonth():02d}")
+check("中秋节标识（动态农历换算）", s == 200 and "中秋节" in d.get("holidays", {}).get(str(_mid.getDay()), []), f"mid={_mid.toYmd()} {str(d.get('holidays', {}).get(str(_mid.getDay())))[:60]}")
+_cn = _Lunar.fromYmd(_cur_year, 1, 1).getSolar()
+s, d = req("GET", f"/api/calendar?month={_cn.getYear()}-{_cn.getMonth():02d}")
+check("春节标识（动态农历换算）", s == 200 and "春节" in d.get("holidays", {}).get(str(_cn.getDay()), []), f"cn={_cn.toYmd()} {str(d.get('holidays', {}).get(str(_cn.getDay())))[:60]}")
+s, d = req("GET", f"/api/calendar?month={_cur_year}-10")
+check("国庆节标识（公历固定）", s == 200 and "国庆节" in d.get("holidays", {}).get("1", []), str(d.get("holidays", {}).get("1"))[:80])
+check("普通日无节日标识", s == 200 and "10" not in d.get("holidays", {}), str(d.get("holidays", {}).get("10"))[:80])
+
+# ---------- 12. code-review v2.0.0 补盲用例（PATCH links 校验/due_date/闰月/theme/年份/日志日期） ----------
+section("12. code-review 补盲")
+# 12.1 PATCH /api/links URL 协议校验（🔴#1）
+s, d = req("POST", "/api/links", {"name": "QA链接", "url": "https://example.com"})
+lid2 = d.get("id")
+s, d = req("PATCH", f"/api/links/{lid2}", {"url": "javascript:alert(1)"})
+check("PATCH 拒绝 javascript: 协议", s == 400, str(d)[:100])
+s, d = req("PATCH", f"/api/links/{lid2}", {"url": "example.com/abc"})
+check("PATCH 无协议自动补 https", s == 200 and d.get("url") == "https://example.com/abc", str(d)[:100])
+# 12.2 非法 due_date（🔴#2）
+s, d = req("POST", "/api/tasks", {"title": "QA坏日期", "due_date": "2026-08-"})
+check("残缺 due_date 拒绝 400", s == 400, str(d)[:100])
+s, d = req("POST", "/api/tasks", {"title": "QA坏日期2", "due_date": "2026-13-99"})
+check("非法 due_date 拒绝 400", s == 400, str(d)[:100])
+s, d = req("GET", "/api/calendar?month=2026-08")
+check("日历不受脏 due_date 影响", s == 200, f"status={s}")
+# 12.3 闰月纪念日倒计时（🔴#3）
+import datetime as _dt2
+_t2 = _dt2.date(2026, 8, 12)
+r = db.next_anniversary(-6, 15, "lunar", today=_t2)
+check("2026-2027 无闰六月→None", r is None, str(r))
+r2 = db.next_anniversary(8, 15, "lunar", today=_t2)
+check("中秋 2026-09-25 倒计时 44", r2 == ("2026-09-25", 44), str(r2))
+s, d = req("POST", "/api/anniversaries", {"name": "QA闰月", "month": -6, "day": 15, "calendar_type": "lunar"})
+check("闰月纪念日可保存（负月）", s == 201, str(d)[:100])
+s, d = req("PATCH", f"/api/anniversaries/{d.get('id')}", {"name": "QA闰月改", "month": -6})
+check("PATCH 闰月负月边界", s == 200 and d.get("month") == -6, str(d)[:100])
+# 12.4 非法 theme（白名单外忽略）
+s, d = req("PUT", "/api/settings", {"theme": "hacker"})
+check("非法 theme 忽略", s == 200 and d.get("theme") != "hacker", str(d)[:100])
+# 12.5 年份边界（🔴#13）
+s, d = req("GET", "/api/calendar?month=1900-01")
+check("1900-01 边界 200", s == 200, f"status={s}")
+s, d = req("GET", "/api/calendar?month=2100-12")
+check("2100-12 边界 200", s == 200, f"status={s}")
+s, d = req("GET", "/api/calendar?month=1899-12")
+check("1899 拒绝 400", s == 400, str(d)[:80])
+s, d = req("GET", "/api/calendar?month=2101-01")
+check("2101 拒绝 400", s == 400, str(d)[:80])
+# 12.6 日志日期格式（🔴#14）
+s, d = req("GET", "/api/log?date=2026-08-99")
+check("非法日志日期拒绝 400", s == 400, str(d)[:80])
+s, d = req("PUT", "/api/log", {"date": "2026-8-1", "content": "x"})
+check("短格式日志日期拒绝 400", s == 400, str(d)[:80])
+# 12.7 city_code 白名单（🟡#12）
+s, d = req("PUT", "/api/settings", {"city_code": "abc"})
+check("未知 city_code 拒绝 400", s == 400, str(d)[:80])
 
 # ---------- 清理测试数据 ----------
 section("清理")

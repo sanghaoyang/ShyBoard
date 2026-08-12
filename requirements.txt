@@ -1,0 +1,6 @@
+# ShyBoard 运行时依赖
+# 安装：uv pip install --python .venv/Scripts/python.exe -r requirements.txt
+# 构建（可选）：uv pip install --python .venv/Scripts/python.exe pyinstaller
+flask>=2.0
+pywebview>=4.0
+lunar_python>=1.4

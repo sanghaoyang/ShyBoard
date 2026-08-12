@@ -22,6 +22,8 @@ else:
     BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 CITIES_FILE = os.path.join(BASE, "cities.json")
 
+# itboy 实测不支持 https（2026-08-12 code-review 后验证：https 连接失败），保持 http；
+# 外部数据注入风险由前端 esc() 转义修复（metaLines 全字段转义）。Open-Meteo 兜底为 https。
 ITBOY_URL = "http://t.weather.itboy.net/api/weather/city/{code}"
 OPENMETEO_URL = "https://api.open-meteo.com/v1/forecast"
 # 可选代理：设置环境变量 WB_PROXY 时启用（例如 http://127.0.0.1:端口），未设置则直连

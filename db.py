@@ -36,6 +36,7 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")  # 极端写并发防 database is locked（code-review #24）
     return conn
 
 
@@ -92,6 +93,11 @@ def init_db():
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
                 value TEXT
+            );
+            CREATE TABLE IF NOT EXISTS daily_logs (
+                date       TEXT PRIMARY KEY,
+                content    TEXT NOT NULL,
+                updated_at TEXT
             );
             """
         )
@@ -255,6 +261,47 @@ def delete_task(task_id):
 
 # ---------------- 便签 ----------------
 
+def list_log_days(month_prefix):
+    """当月写过日记的日期（prefix=YYYY-MM-），返回 {日: 内容}。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT date, content FROM daily_logs WHERE date LIKE ?",
+            (month_prefix + "%",),
+        ).fetchall()
+        return {str(int(r[0][8:10])): r[1] for r in rows}
+    finally:
+        conn.close()
+
+
+def get_log(date):
+    """某天的日记（date=YYYY-MM-DD），无则返回 None。"""
+    conn = get_conn()
+    try:
+        r = conn.execute(
+            "SELECT date, content, updated_at FROM daily_logs WHERE date = ?",
+            (date,),
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def save_log(date, content):
+    """写入/更新某天日记（upsert）。"""
+    now = _now()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO daily_logs (date, content, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(date) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            (date, content, now),
+        )
+        conn.commit()
+        return get_log(date)
+    finally:
+        conn.close()
+
 def create_note(content):
     now = _now()
     conn = get_conn()
@@ -295,6 +342,19 @@ def delete_note(note_id):
         conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+
+def update_note(note_id, content):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE notes SET content = ?, updated_at = ? WHERE id = ?",
+            (content, _now(), note_id),
+        )
+        conn.commit()
+        return get_note(note_id)
     finally:
         conn.close()
 
@@ -419,6 +479,19 @@ def delete_anniversary(ann_id):
         conn.close()
 
 
+def update_anniversary(ann_id, name, month, day, calendar_type="solar"):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE anniversaries SET name = ?, month = ?, day = ?, calendar_type = ? WHERE id = ?",
+            (name, int(month), int(day), calendar_type, ann_id),
+        )
+        conn.commit()
+        return get_anniversary(ann_id)
+    finally:
+        conn.close()
+
+
 def next_anniversary(month, day, calendar_type="solar", today=None):
     """计算下次纪念日的阳历日期与剩余天数（每年循环）。
 
@@ -432,8 +505,8 @@ def next_anniversary(month, day, calendar_type="solar", today=None):
 
     if calendar_type == "lunar":
         from lunar_python import Lunar
-        # 尝试当年：农历(今年, month, day) → 阳历；若已过去 → 明年
-        for y in (today.year, today.year + 1):
+        # 闰月约 2-3 年一次：查 8 年足够覆盖；查不到（异常数据）返回 None 而非假日期
+        for y in range(today.year, today.year + 8):
             try:
                 lunar = Lunar.fromYmd(y, month, day)
                 cand = lunar.getSolar()
@@ -442,8 +515,7 @@ def next_anniversary(month, day, calendar_type="solar", today=None):
                 continue
             if d >= today:
                 return d.isoformat(), (d - today).days
-        # 兜底（理论上不会到这）：用明年 1/1
-        return f"{today.year + 1}-01-01", 366
+        return None
 
     # solar：公历每年循环
     try:

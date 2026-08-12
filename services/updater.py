@@ -129,6 +129,10 @@ def download(url, filename, version=""):
     下载完成后写 pending 缓存（pending_update.json），不立即安装。
     返回本地路径。
     """
+    # 路径穿越防御：filename 清洗为纯文件名 + 白名单（2026-08-12 code-review #8）
+    filename = os.path.basename(str(filename or ""))
+    if not re.fullmatch(r"[A-Za-z0-9._\-]+", filename):
+        raise ValueError("非法文件名")
     os.makedirs(UPDATES_DIR, exist_ok=True)
     # 清理旧下载（保留进程信息/进度/缓存元数据）
     for f in os.listdir(UPDATES_DIR):
@@ -153,8 +157,7 @@ def download(url, filename, version=""):
                 downloaded += len(chunk)
                 try:
                     with open(PROGRESS, "w") as pf:
-                        import json as _json
-                        _json.dump({
+                        json.dump({
                             "downloaded": downloaded,
                             "total": total,
                             "percent": round(downloaded / total * 100, 1) if total else -1,
@@ -164,8 +167,7 @@ def download(url, filename, version=""):
                     pass
     try:
         with open(PROGRESS, "w") as pf:
-            _json = __import__("json")
-            _json.dump({
+            json.dump({
                 "downloaded": downloaded,
                 "total": total,
                 "percent": 100.0,
@@ -279,4 +281,5 @@ def apply():
         raise RuntimeError("没有待安装的更新，请先下载")
     _launch_helper(os.getpid())
     # 给响应留时间，然后退出；helper 接管替换与重启
-    threading.Timer(1.0, os._exit, args=(0,)).start()
+    # 3 秒（2026-08-12 code-review #9：1 秒太短，慢磁盘/杀软扫描时前端收不到响应误报失败）
+    threading.Timer(3.0, os._exit, args=(0,)).start()
