@@ -144,6 +144,19 @@ def download(url, filename, version=""):
             pass
     dest = os.path.join(UPDATES_DIR, filename)
     PROGRESS = os.path.join(UPDATES_DIR, "progress.json")
+    # 下载一开始就写初始进度，覆盖上次残留的 done=true 文件。
+    # 否则 GitHub CDN 首字节延迟期间，前端轮询读到旧完成态会提前显示"下载完成 ✓"
+    # （2026-08-12 修复：progress.json 残留导致更新进度 UI "先完成、后进度"）。
+    try:
+        with open(PROGRESS, "w") as pf:
+            json.dump({
+                "downloaded": 0,
+                "total": 0,
+                "percent": 0.0,
+                "done": False,
+            }, pf)
+    except OSError:
+        pass
     req = urllib.request.Request(url, headers={"User-Agent": "ShyBoard-Updater"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         total = int(resp.headers.get("Content-Length") or 0)

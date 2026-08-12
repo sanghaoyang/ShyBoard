@@ -35,7 +35,7 @@ PREFERRED_PORT = 17890
 HEALTH_PATH = "/api/health"
 
 # 应用版本：发布时手动递增，与 GitHub Release tag 对应（如 v1.1.0）
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 
 # 测试版标识：exe 名含 "Beta"（如 ShyBoardBeta.exe）即为测试版——
 # 隐藏顶栏 ⬆ 自动更新按钮（测试版不走 GitHub release 更新），顶栏显示 Beta 徽标。
