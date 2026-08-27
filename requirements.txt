@@ -1,0 +1,8 @@
+# ShyBoard 运行时依赖
+# 安装：uv pip install --python .venv/Scripts/python.exe -r requirements.txt
+# 包含桌面运行、MCP Bridge 和便携版构建所需依赖
+flask>=2.0
+pywebview>=4.0
+lunar_python>=1.4
+mcp>=1.27,<2
+pyinstaller>=6,<7
