@@ -79,6 +79,7 @@ async function loadSettings() {
     SETTINGS = s;
     applyTheme(s.theme || "pink");
     applyFontSize(s.font_size || "normal");
+    applyPomodoroSettings(s);
     // 同步开关状态
     $("#set-autostart").checked = s.autostart === "1";
     $("#set-confirm-task").checked = s.confirm_delete_task !== "0";
@@ -182,6 +183,97 @@ $("#set-autostart").addEventListener("change", async (e) => {
     toast(err.message);
     e.target.checked = !val;
   }
+});
+
+function ensureDataTransferCard() {
+  const grid = $("#settings-view .settings-page-grid");
+  if (!grid || $("#data-export")) return;
+  grid.insertAdjacentHTML("beforeend", `
+    <section class="settings-card data-card">
+      <div class="settings-card-heading"><span class="settings-card-icon">⇄</span><div>
+        <h2>数据迁移</h2><p>把完整工作台带到新电脑，或留下一份随时可恢复的备份。</p>
+      </div></div>
+      <div class="data-transfer">
+        <div class="data-transfer-copy"><strong>一个文件，保留全部内容与状态</strong><span>包含任务、进度历史、便签、快捷方式、纪念日、每日记录、定时任务及界面偏好。</span></div>
+        <div class="data-transfer-actions"><button class="btn primary" id="data-export">导出数据</button><button class="btn ghost" id="data-import">导入数据</button><input id="data-import-file" type="file" accept=".json,application/json" hidden></div>
+      </div>
+      <p class="data-transfer-note">导入会替换当前工作台内容；开始前，ShyBoard 会自动保留一份当前数据库快照。</p>
+    </section>`);
+}
+
+function backupFilename() {
+  const now = new Date();
+  const date = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("");
+  const time = [String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0")].join("");
+  return `ShyBoard-backup-${date}-${time}.json`;
+}
+
+async function exportData() {
+  const button = $("#data-export");
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "正在整理…";
+  try {
+    const backup = await api("/api/backup");
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = backupFilename();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("完整数据已导出");
+  } catch (e) { toast(e.message); }
+  finally {
+    button.disabled = false;
+    button.textContent = oldText;
+  }
+}
+
+async function importDataFile(file) {
+  if (!file) return;
+  try {
+    if (file.size > 64 * 1024 * 1024) throw new Error("备份文件不能超过 64 MB");
+    const backup = JSON.parse(await file.text());
+    if (backup?.format !== "shyboard-backup") throw new Error("这不是有效的 ShyBoard 备份文件");
+    const allowed = await confirmDialog(
+      "导入会用备份内容替换当前工作台。当前数据会先自动保存一份快照，可以随时恢复。",
+      { title: "导入完整数据", okText: "开始导入", icon: "⇄", tone: "primary" },
+    );
+    if (!allowed) return;
+    const button = $("#data-import");
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "正在导入…";
+    try {
+      await api("/api/backup/import", { method: "POST", body: JSON.stringify(backup) });
+      _tasksSig = "";
+      _calendarRecords = null;
+      _calendarRecordIds = {};
+      await loadSettings();
+      pomoStop();
+      await Promise.all([loadTasks(), loadNotes(), loadLinks(), loadAnns(), loadCalendar()]);
+      api("/api/pomodoro").then((d) => {
+        $("#pomo-count").textContent = `🍅 今日 ${d.count}`;
+        if ($("#sum-pomo")) $("#sum-pomo").textContent = d.count;
+      }).catch(() => {});
+      toast("数据已完整导入，原数据也已自动备份");
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  } catch (e) { toast(e instanceof SyntaxError ? "备份文件内容无法识别" : e.message); }
+}
+
+ensureDataTransferCard();
+$("#data-export").addEventListener("click", exportData);
+$("#data-import").addEventListener("click", () => $("#data-import-file").click());
+$("#data-import-file").addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  importDataFile(file);
 });
 
 /* ---------- 时钟 ---------- */
@@ -1240,7 +1332,7 @@ async function loadCalendar() {
       const recurringHtml = recurring.map((task) => `<div class="cal-recurring ${task.completed ? "completed" : ""}" title="${esc(task.schedule_label)} · ${task.completed ? "已完成" : "待完成"}"><span aria-hidden="true">↻</span>${esc(task.title)}${task.completed ? " · 已完成" : ""}</div>`).join("");
       const record = calendarApiRecord(d.logs, dateStr);
       const recordHtml = record
-        ? `<div class="cal-record" title="${esc(record)}">📝 ${esc(record.replace(/\s+/g, " "))}</div>`
+        ? `<div class="cal-record" title="${esc(record)}">📝 ${esc(record)}</div>`
         : "";
       cells.push(`
         <div class="cal-cell ${isToday ? "today" : ""}" data-date="${dateStr}">
@@ -1612,6 +1704,21 @@ let pomo = {
 };
 pomo.remain = pomo.focusMinutes * 60;
 
+function applyPomodoroSettings(settings) {
+  const focus = Number(settings?.pomodoro_focus_minutes);
+  const rest = Number(settings?.pomodoro_break_minutes);
+  if ([15, 25, 45, 60].includes(focus)) {
+    pomo.focusMinutes = focus;
+    localStorage.setItem(POMO_FOCUS_KEY, String(focus));
+  }
+  if ([5, 10, 15].includes(rest)) {
+    pomo.breakMinutes = rest;
+    localStorage.setItem(POMO_BREAK_KEY, String(rest));
+  }
+  if (pomo.phase === "idle") pomo.remain = pomo.focusMinutes * 60;
+  pomoRender();
+}
+
 function pomoFmt(sec) {
   const total = Math.max(0, Math.ceil(sec));
   const m = Math.floor(total / 60);
@@ -1781,10 +1888,18 @@ function pomoDurationChanged(kind, value) {
     pomo.focusMinutes = minutes;
     pomo.remain = minutes * 60;
     localStorage.setItem(POMO_FOCUS_KEY, String(minutes));
+    api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ pomodoro_focus_minutes: minutes }),
+    }).catch((e) => toast(e.message));
   }
   if (kind === "break" && [5, 10, 15].includes(minutes)) {
     pomo.breakMinutes = minutes;
     localStorage.setItem(POMO_BREAK_KEY, String(minutes));
+    api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ pomodoro_break_minutes: minutes }),
+    }).catch((e) => toast(e.message));
   }
   pomoRender();
 }

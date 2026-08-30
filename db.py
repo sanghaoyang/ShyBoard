@@ -25,9 +25,22 @@ DEFAULT_SETTINGS = {
     "confirm_delete_link": "1",
     "confirm_delete_note": "1",
     "confirm_task_status": "1",
+    "pomodoro_focus_minutes": "25",
+    "pomodoro_break_minutes": "5",
 }
 
 TASK_PROGRESS_PREFIX = "[TASK_PROGRESS]\n"
+
+BACKUP_TABLES = (
+    "projects", "tasks", "task_events", "task_progress", "notes", "links",
+    "anniversaries", "daily_logs", "recurring_tasks", "recurring_completions",
+    "settings",
+)
+BACKUP_DELETE_ORDER = (
+    "recurring_completions", "task_progress", "task_events", "recurring_tasks",
+    "tasks", "notes", "links", "anniversaries", "daily_logs", "projects",
+    "settings",
+)
 
 
 def _now():
@@ -251,6 +264,102 @@ def upsert_project(project_id, name, root_path=""):
         )
         conn.commit()
         return get_project(project_id)
+    finally:
+        conn.close()
+
+
+def export_all_data():
+    """导出所有可迁移的业务数据和设置，保持主外键与历史记录完整。"""
+    conn = get_conn()
+    try:
+        return {
+            table: [dict(row) for row in conn.execute(f"SELECT * FROM {table}").fetchall()]
+            for table in BACKUP_TABLES
+        }
+    finally:
+        conn.close()
+
+
+def _validate_backup_data(data):
+    if not isinstance(data, dict):
+        raise ValueError("备份中的 data 字段无效")
+    missing = [table for table in BACKUP_TABLES if table not in data]
+    if missing:
+        raise ValueError(f"备份不完整，缺少：{', '.join(missing)}")
+    total_rows = 0
+    checked = {}
+    conn = get_conn()
+    try:
+        table_columns = {
+            table: {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for table in BACKUP_TABLES
+        }
+    finally:
+        conn.close()
+    for table in BACKUP_TABLES:
+        rows = data[table]
+        if not isinstance(rows, list):
+            raise ValueError(f"备份表 {table} 的格式无效")
+        total_rows += len(rows)
+        if total_rows > 250000:
+            raise ValueError("备份记录过多，无法安全导入")
+        checked[table] = []
+        for row in rows:
+            if not isinstance(row, dict) or not row:
+                raise ValueError(f"备份表 {table} 中存在无效记录")
+            unknown = set(row) - table_columns[table]
+            if unknown:
+                raise ValueError("备份来自更新版本，请先升级 ShyBoard 后再导入")
+            checked[table].append(dict(row))
+    return checked
+
+
+def _create_import_safety_backup():
+    backup_dir = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    filename = f"ShyBoard-before-import-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.db"
+    path = os.path.join(backup_dir, filename)
+    source = get_conn()
+    target = sqlite3.connect(path)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+    return filename
+
+
+def import_all_data(data):
+    """校验后整体替换数据；任一记录失败时回滚，并保留导入前数据库快照。"""
+    checked = _validate_backup_data(data)
+    safety_backup = _create_import_safety_backup()
+    conn = get_conn()
+    try:
+        with conn:
+            for table in BACKUP_DELETE_ORDER:
+                conn.execute(f"DELETE FROM {table}")
+            for table in BACKUP_TABLES:
+                for row in checked[table]:
+                    columns = list(row)
+                    names = ", ".join(f'"{column}"' for column in columns)
+                    placeholders = ", ".join("?" for _ in columns)
+                    conn.execute(
+                        f"INSERT INTO {table} ({names}) VALUES ({placeholders})",
+                        [row[column] for column in columns],
+                    )
+            for key, value in DEFAULT_SETTINGS.items():
+                conn.execute(
+                    "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise ValueError("备份中的关联数据不完整，已取消导入")
+        counts = {
+            table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in BACKUP_TABLES
+        }
+        return {"counts": counts, "safety_backup": safety_backup}
     finally:
         conn.close()
 

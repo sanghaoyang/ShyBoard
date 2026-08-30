@@ -3,6 +3,7 @@
 所有接口绑定 127.0.0.1，仅供本机（应用窗口 / Hermes agent）调用。"""
 import os
 import re
+import sqlite3
 import sys
 import uuid
 from datetime import date, datetime, timedelta
@@ -23,6 +24,7 @@ if not os.path.isdir(STATIC_DIR) and hasattr(sys, "_MEIPASS"):
     STATIC_DIR = os.path.join(sys._MEIPASS, "static")
 
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
 
 VALID_STATUS = {"todo", "doing", "done"}
 VALID_PRIORITY = {"low", "medium", "high"}
@@ -935,6 +937,38 @@ def calendar_month():
     })
 
 
+# ---------------- 数据备份与恢复 ----------------
+
+@app.get("/api/backup")
+def backup_export():
+    data = db.export_all_data()
+    return jsonify({
+        "format": "shyboard-backup",
+        "schema_version": 1,
+        "app_version": APP_VERSION,
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "data": data,
+    })
+
+
+@app.post("/api/backup/import")
+def backup_import():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or payload.get("format") != "shyboard-backup":
+        return jsonify({"error": "这不是有效的 ShyBoard 备份文件"}), 400
+    try:
+        schema_version = int(payload.get("schema_version", 0))
+    except (TypeError, ValueError):
+        schema_version = 0
+    if schema_version != 1:
+        return jsonify({"error": "暂不支持这个备份版本，请先升级 ShyBoard"}), 400
+    try:
+        restored = db.import_all_data(payload.get("data"))
+        return jsonify({"ok": True, **restored})
+    except (ValueError, sqlite3.Error) as exc:
+        return jsonify({"error": f"无法导入备份：{exc}"}), 400
+
+
 # ---------------- 设置 ----------------
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -972,6 +1006,7 @@ def autostart_get():
         enabled = False
     except OSError:
         pass
+    db.set_setting("autostart", "1" if enabled else "0")
     return jsonify({"enabled": enabled})
 
 
@@ -1023,6 +1058,20 @@ def settings_update():
         db.set_setting("theme", str(data["theme"]).strip())
     if "font_size" in data and str(data["font_size"]).strip() in {"normal", "large"}:
         db.set_setting("font_size", str(data["font_size"]).strip())
+    duration_options = {
+        "pomodoro_focus_minutes": {15, 25, 45, 60},
+        "pomodoro_break_minutes": {5, 10, 15},
+    }
+    for key, allowed in duration_options.items():
+        if key not in data:
+            continue
+        try:
+            minutes = int(data[key])
+        except (TypeError, ValueError):
+            return jsonify({"error": "番茄钟时长无效"}), 400
+        if minutes not in allowed:
+            return jsonify({"error": "番茄钟时长无效"}), 400
+        db.set_setting(key, str(minutes))
     # 直接给城市代码（前端从搜索结果选定）：city + city_code 一起存
     if "city_code" in data and str(data.get("city_code", "")).strip():
         code = str(data["city_code"]).strip()

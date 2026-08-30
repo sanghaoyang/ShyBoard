@@ -244,6 +244,11 @@ s, d = req("PUT", "/api/settings", {"font_size": "large"})
 check("切换大号字体", s == 200 and d.get("font_size") == "large", str(d)[:100])
 s, d = req("PUT", "/api/settings", {"font_size": "normal"})
 check("恢复正常字体", s == 200 and d.get("font_size") == "normal", str(d)[:100])
+s, d = req("PUT", "/api/settings", {"pomodoro_focus_minutes": 45, "pomodoro_break_minutes": 10})
+check("番茄钟时长进入可备份设置", s == 200
+      and d.get("pomodoro_focus_minutes") == "45"
+      and d.get("pomodoro_break_minutes") == "10", str(d)[:120])
+req("PUT", "/api/settings", {"pomodoro_focus_minutes": 25, "pomodoro_break_minutes": 5})
 s, d = req("PUT", "/api/settings", {"city_code": "101210101", "city": "杭州"})
 check("切城市（代码）", s == 200 and d.get("city_code") == "101210101" and d.get("city") == "杭州", str(d)[:100])
 s, d = req("GET", "/api/weather")
@@ -337,6 +342,9 @@ check("字体档位会应用并保存", "applyFontSize" in script_text
 check("日历记录使用后端主通道", "calendarApiRecord(d.logs, dateStr)" in script_text
       and "calendarApiRecord(cal.logs, _dayModalDate)" in script_text
       and 'api("/api/log"' in script_text, script_text[:120])
+check("设置页提供完整数据迁移", "ensureDataTransferCard" in script_text
+      and 'api("/api/backup")' in script_text
+      and 'api("/api/backup/import"' in script_text, script_text[:120])
 s, body = req_raw("GET", "/redesign.js")
 redesign_text = body.decode("utf-8")
 check("任务标签与日期分行", 'class="task-tags"' in redesign_text
@@ -354,6 +362,9 @@ check("大号字体统一增大", '--font-bump: 1.5px' in premium_text
       and 'font-size: calc(' in premium_text, premium_text[:120])
 check("日期选择入口清晰", '::-webkit-calendar-picker-indicator' in premium_text
       and 'border-color: rgba(var(--ink-rgb),.2)' in premium_text, premium_text[:120])
+check("日历记录保留换行", ".cal-record" in premium_text
+      and "white-space: pre-line" in premium_text
+      and 'esc(record.replace(/\\s+/g, " "))' not in script_text, premium_text[:120])
 s, body = req_raw("GET", "/cities.json")
 check("cities.json 是合法 JSON", s == 200, f"got {s}")
 
@@ -510,6 +521,37 @@ s, d = req("DELETE", f"/api/recurring-tasks/{recurring_id}")
 check("删除定时任务", s == 200 and d.get("ok"), str(d))
 s, d = req("GET", f"/api/recurring-tasks/{recurring_id}")
 check("删除后返回 404", s == 404, str(d))
+
+# ---------- 11c. 完整备份与恢复 ----------
+section("11c. 完整备份与恢复")
+s, backup_task = req("POST", "/api/tasks", {"title": "QA备份原始任务", "status": "doing"})
+s2, backup_note = req("POST", "/api/notes", {"content": "QA备份便签"})
+req("PUT", "/api/log", {"date": "2026-08-20", "content": "第一行\n第二行"})
+check("准备备份数据", s == 201 and s2 == 201, f"task={s}, note={s2}")
+s, backup = req("GET", "/api/backup")
+check("导出包含全部数据表", s == 200 and backup.get("format") == "shyboard-backup"
+      and backup.get("schema_version") == 1
+      and all(name in backup.get("data", {}) for name in db.BACKUP_TABLES), str(backup)[:180])
+req("PATCH", f"/api/tasks/{backup_task['id']}", {"title": "QA被修改"})
+req("DELETE", f"/api/notes/{backup_note['id']}")
+req("PUT", "/api/log", {"date": "2026-08-20", "content": "已覆盖"})
+s, restored = req("POST", "/api/backup/import", backup)
+check("完整备份可事务恢复", s == 200 and restored.get("ok")
+      and restored.get("safety_backup", "").startswith("ShyBoard-before-import-"), str(restored)[:180])
+s, restored_task = req("GET", f"/api/tasks/{backup_task['id']}")
+s2, restored_notes = req("GET", "/api/notes")
+s3, restored_log = req("GET", "/api/log?date=2026-08-20")
+check("任务状态和历史恢复", s == 200 and restored_task.get("title") == "QA备份原始任务"
+      and restored_task.get("status") == "doing"
+      and len(restored_task.get("events", [])) >= 1, str(restored_task)[:120])
+check("便签与多行日历记录恢复", s2 == 200
+      and any(n.get("content") == "QA备份便签" for n in restored_notes)
+      and s3 == 200 and restored_log.get("content") == "第一行\n第二行", str(restored_log))
+s, invalid_backup = req("POST", "/api/backup/import", {"format": "other", "schema_version": 1, "data": {}})
+check("拒绝非 ShyBoard 备份", s == 400, str(invalid_backup))
+req("DELETE", f"/api/tasks/{backup_task['id']}")
+req("DELETE", f"/api/notes/{backup_note['id']}")
+req("PUT", "/api/log", {"date": "2026-08-20", "content": ""})
 
 # ---------- 12. code-review v2.0.0 补盲用例（PATCH links 校验/due_date/闰月/theme/年份/日志日期） ----------
 section("12. code-review 补盲")
