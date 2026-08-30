@@ -20,9 +20,9 @@ ShyBoard 是一个面向 Windows 的本地个人工作台，把任务、进度�
 
 ## 下载
 
-在 GitHub 仓库的 [Releases](../../releases) 页面下载最新的 `ShyBoard-Portable.zip`。便携版不需要安装，解压后直接运行即可。
+在 GitHub 仓库的 [Releases](../../releases) 页面下载最新版本。若 Release 提供 `ShyBoard-Portable.zip`，便携版不需要安装，解压后直接运行即可。
 
-如果暂时没有可用的 Release，也可以在仓库右侧选择 **Code → Download ZIP** 获取源码，再按“从源码运行”一节启动；源码包不包含任何个人数据库或运行时数据。
+如果 Release 没有构建附件，或你希望自行构建，可以在仓库右侧选择 **Code → Download ZIP** 获取源码，再按“从源码运行”或“构建便携版”一节操作；源码包不包含任何个人数据库或运行时数据。
 
 下载并解压后：
 
