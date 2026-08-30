@@ -337,6 +337,9 @@ check("便签列表不再显示编号", "note-index" not in script_text, script_
 check("便签时间精确到分钟", "created_at.slice(5, 16)" in script_text, script_text[:120])
 check("番茄钟时长会保存", "POMO_FOCUS_KEY" in script_text
       and "pomoDurationChanged" in script_text and "pomoTogglePause" in script_text, script_text[:120])
+check("更新下载只接受 GitHub 版本标记", 'JSON.stringify({ tag: _updateInfo.tag })' in script_text
+      and "download_url: _updateInfo.download_url" not in script_text
+      and "showUpdateResult" in script_text, script_text[:120])
 check("字体档位会应用并保存", "applyFontSize" in script_text
       and 'JSON.stringify({ font_size: fontSize })' in script_text, script_text[:120])
 check("日历记录使用后端主通道", "calendarApiRecord(d.logs, dateStr)" in script_text

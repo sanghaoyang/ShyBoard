@@ -1,149 +1,276 @@
-# ============================================================
-#  ShyBoard Updater v4 (PowerShell) - Clash Verge Rev style
-#  All comments ASCII only (PS 5.1 parses .ps1 with ANSI/GBK
-#  unless BOM; Chinese comments would garble the script).
-#
-#  Design (borrowed from Clash Verge Rev's updater.rs):
-#    * Download and install are DECOUPLED. The main app only
-#      writes a pending_update.json + zip; it never replaces
-#      files while running.
-#    * This helper runs as an INDEPENDENT process spawned with
-#      DETACHED_PROCESS + DEVNULL stdio, so it never inherits
-#      the GUI's invalid handles (the bat used to block on
-#      `set /p` with no stdin - root cause of "stuck update").
-#    * It waits for the old process (OldPid) to exit, then
-#      replaces exe/_internal, verifies sizes, restarts.
-#    * Any failure is logged; the zip is kept so the next
-#      launch can retry (pending cache preserved).
-#
-#  Args:
-#    -OldPid   PID of the app instance that spawned us.
-#              We wait for it to exit before touching files.
-# ============================================================
-param([int]$OldPid = 0)
+# ShyBoard transactional updater v5.
+# This script is intentionally ASCII-only for Windows PowerShell 5.1.
+param(
+    [int]$OldPid = 0,
+    [switch]$NoRestart,
+    [switch]$HeadlessRestart
+)
 
 $ErrorActionPreference = "Stop"
-$Base = $PSScriptRoot
+$Base = [IO.Path]::GetFullPath($PSScriptRoot)
 $Data = Join-Path $Base "data"
-$Upd  = Join-Path $Data "updates"
-$Log  = Join-Path $Upd "update.log"
+$Upd = Join-Path $Data "updates"
+$Log = Join-Path $Upd "update.log"
 $PendingFile = Join-Path $Upd "pending_update.json"
+$ResultFile = Join-Path $Upd "last_result.json"
+$ExpectedZip = "ShyBoard-Portable.zip"
+$Exe = Join-Path $Base "ShyBoard.exe"
+$McpExe = Join-Path $Base "ShyBoard-MCP.exe"
+$Internal = Join-Path $Base "_internal"
+$SelfScript = Join-Path $Base "update.ps1"
+$Stage = $null
+$Backup = $null
+$InstallTouched = $false
+$StartedProcess = $null
+$PendingVersion = ""
 
-function Write-Log($msg) {
-    $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg
-    Add-Content -Path $Log -Value $line -Encoding ASCII
+New-Item -ItemType Directory -Force -Path $Upd | Out-Null
+
+function Write-Log([string]$Message) {
+    $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
+    Add-Content -LiteralPath $Log -Value $line -Encoding ASCII
 }
+
+function Write-Result([string]$Status, [string]$Version, [string]$Message) {
+    $payload = @{
+        status = $Status
+        version = $Version
+        message = $Message
+        timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    } | ConvertTo-Json -Compress
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($ResultFile, $payload, $utf8)
+}
+
+function Get-Sha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return (($sha.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") }) -join "") }
+    finally { $sha.Dispose(); $stream.Dispose() }
+}
+
+function Assert-ChildPath([string]$Path, [string]$Parent) {
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $fullParent = [IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'
+    if (-not $fullPath.StartsWith($fullParent, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe path outside expected directory: $fullPath"
+    }
+    return $fullPath
+}
+
+function Remove-ExactPath([string]$Path, [string]$Parent) {
+    $safe = Assert-ChildPath $Path $Parent
+    if (Test-Path -LiteralPath $safe) {
+        Remove-Item -LiteralPath $safe -Recurse -Force
+    }
+}
+
+function Stop-InstalledInstances {
+    try {
+        $targets = Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -eq "ShyBoard.exe" -and
+            $_.ExecutablePath -and
+            ([IO.Path]::GetFullPath($_.ExecutablePath) -eq $Exe)
+        }
+        foreach ($target in $targets) {
+            Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+        if ($targets) { Start-Sleep -Milliseconds 800 }
+    } catch {
+        Write-Log "WARN: could not enumerate sibling processes: $($_.Exception.Message)"
+    }
+}
+
+function Get-RestartArgs {
+    $argsList = @()
+    $portFile = Join-Path $Data "port.txt"
+    if (Test-Path -LiteralPath $portFile) {
+        $portText = (Get-Content -LiteralPath $portFile -Raw).Trim()
+        $portNumber = 0
+        if ([int]::TryParse($portText, [ref]$portNumber) -and $portNumber -ge 1024 -and $portNumber -le 65535) {
+            $argsList = @("--port", [string]$portNumber)
+        }
+    }
+    if ($HeadlessRestart) { $argsList += "--no-window" }
+    return $argsList
+}
+
+function Start-InstalledApp([bool]$VerifyVersion) {
+    if ($NoRestart) {
+        Write-Log "NoRestart enabled; skipping application launch"
+        return $null
+    }
+    if (-not (Test-Path -LiteralPath $Exe)) {
+        throw "ShyBoard.exe is missing after install"
+    }
+    $restartArgs = @(Get-RestartArgs)
+    $process = Start-Process -FilePath $Exe -ArgumentList $restartArgs -WorkingDirectory $Base -PassThru
+    Write-Log "started ShyBoard pid=$($process.Id)"
+    if (-not $VerifyVersion) { return $process }
+
+    $port = 17890
+    $portIndex = [Array]::IndexOf($restartArgs, "--port")
+    if ($portIndex -ge 0 -and $portIndex + 1 -lt $restartArgs.Count) { $port = [int]$restartArgs[$portIndex + 1] }
+    $expected = $PendingVersion.TrimStart('v')
+    for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        Start-Sleep -Milliseconds 500
+        if ($process.HasExited) { throw "updated application exited before health check" }
+        try {
+            $health = Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/api/health" -f $port) -TimeoutSec 2
+            if ($health.service -eq "workbench") {
+                $actual = ([string]$health.version).TrimStart('v')
+                if ($actual -ne $expected) {
+                    throw "version check failed: expected $expected, got $actual"
+                }
+                Write-Log "health check passed, version=$actual"
+                return $process
+            }
+        } catch {
+            if ($_.Exception.Message -like "version check failed:*") { throw }
+        }
+    }
+    throw "updated application health check timed out"
+}
+
+function Restore-PreviousInstall {
+    Write-Log "rolling back previous installation"
+    Stop-InstalledInstances
+    if ($StartedProcess -and -not $StartedProcess.HasExited) {
+        Stop-Process -Id $StartedProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+    if (-not $Backup -or -not (Test-Path -LiteralPath $Backup)) {
+        Write-Log "WARN: backup directory is unavailable"
+        return
+    }
+    Remove-ExactPath $Internal $Base
+    foreach ($filePath in @($Exe, $McpExe)) {
+        if (Test-Path -LiteralPath $filePath) { Remove-Item -LiteralPath $filePath -Force }
+    }
+    $oldExe = Join-Path $Backup "ShyBoard.exe"
+    $oldMcp = Join-Path $Backup "ShyBoard-MCP.exe"
+    $oldInternal = Join-Path $Backup "_internal"
+    $oldScript = Join-Path $Backup "update.ps1"
+    if (Test-Path -LiteralPath $oldExe) { Move-Item -LiteralPath $oldExe -Destination $Exe -Force }
+    if (Test-Path -LiteralPath $oldMcp) { Move-Item -LiteralPath $oldMcp -Destination $McpExe -Force }
+    if (Test-Path -LiteralPath $oldInternal) { Move-Item -LiteralPath $oldInternal -Destination $Internal -Force }
+    if (Test-Path -LiteralPath $oldScript) { Copy-Item -LiteralPath $oldScript -Destination $SelfScript -Force }
+    Write-Log "rollback completed"
+}
+
+Write-Log "updater v5 started, OldPid=$OldPid Base=$Base"
 
 try {
-    New-Item -ItemType Directory -Force -Path $Upd | Out-Null
-} catch {}
-Write-Log "updater v4 started, OldPid=$OldPid cwd=$Base"
-
-# ---- 1. wait for the old app process to exit (max 60s) ----
-# The GUI called os._exit() right after spawning us, so this
-# should return almost immediately. Loop is a safety net.
-if ($OldPid -gt 0) {
-    $waited = 0
-    while ($waited -lt 60) {
-        $proc = Get-Process -Id $OldPid -ErrorAction SilentlyContinue
-        if (-not $proc) { break }
-        Start-Sleep -Seconds 1
-        $waited++
+    if ($OldPid -gt 0) {
+        $waited = 0
+        while ($waited -lt 90 -and (Get-Process -Id $OldPid -ErrorAction SilentlyContinue)) {
+            Start-Sleep -Seconds 1
+            $waited++
+        }
+        if ($waited -ge 90) {
+            Write-Log "old process did not exit in time; stopping pid=$OldPid"
+            Stop-Process -Id $OldPid -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
     }
-    if ($waited -ge 60) {
-        Write-Log "WARN: OldPid $OldPid still alive after 60s, killing it"
-        Stop-Process -Id $OldPid -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-    } else {
-        Write-Log "old process $OldPid exited after ${waited}s"
+    Stop-InstalledInstances
+
+    if (-not (Test-Path -LiteralPath $PendingFile)) { throw "pending_update.json is missing" }
+    $pending = Get-Content -LiteralPath $PendingFile -Raw | ConvertFrom-Json
+    $zipName = [string]$pending.zip
+    $PendingVersion = [string]$pending.version
+    $expectedHash = ([string]$pending.sha256).ToLowerInvariant()
+    $expectedSize = [int64]$pending.size
+    if ($zipName -ne $ExpectedZip) { throw "pending package name is invalid" }
+    if ($PendingVersion -notmatch '^v?\d+\.\d+\.\d+$') { throw "pending version is invalid" }
+    if ($expectedHash -notmatch '^[0-9a-f]{64}$') { throw "pending SHA-256 is invalid" }
+
+    $zipPath = Assert-ChildPath (Join-Path $Upd $zipName) $Upd
+    if (-not (Test-Path -LiteralPath $zipPath)) { throw "pending package is missing" }
+    if ((Get-Item -LiteralPath $zipPath).Length -ne $expectedSize) { throw "pending package size mismatch" }
+    $actualHash = Get-Sha256 $zipPath
+    if ($actualHash -ne $expectedHash) { throw "pending package SHA-256 mismatch" }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $entryName = $entry.FullName.Replace('\', '/')
+            if ($entryName.StartsWith('/') -or $entryName.Contains('../') -or $entryName.Contains(':')) {
+                throw "package contains an unsafe path"
+            }
+        }
+    } finally { $archive.Dispose() }
+
+    $token = [Guid]::NewGuid().ToString('N')
+    $Stage = Assert-ChildPath (Join-Path $Upd ("stage-" + $token)) $Upd
+    $Backup = Assert-ChildPath (Join-Path $Upd ("backup-" + $token)) $Upd
+    New-Item -ItemType Directory -Path $Stage | Out-Null
+    New-Item -ItemType Directory -Path $Backup | Out-Null
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $Stage -Force
+
+    $srcExe = Join-Path $Stage "ShyBoard.exe"
+    $srcMcp = Join-Path $Stage "ShyBoard-MCP.exe"
+    $srcInternal = Join-Path $Stage "_internal"
+    $srcScript = Join-Path $Stage "update.ps1"
+    $srcManifest = Join-Path $Stage "release.json"
+    foreach ($required in @($srcExe, $srcMcp, $srcInternal, $srcScript, $srcManifest)) {
+        if (-not (Test-Path -LiteralPath $required)) { throw "package structure is incomplete" }
     }
-} else {
-    Write-Log "no OldPid given, assuming app already exited"
-}
-
-# ---- 2. read pending cache ----
-if (-not (Test-Path $PendingFile)) {
-    Write-Log "FATAL: no pending_update.json, nothing to install"
-    exit 1
-}
-$pending = Get-Content $PendingFile -Raw | ConvertFrom-Json
-$zipName = [string]$pending.zip
-$version = [string]$pending.version
-Write-Log "pending update: version=$version zip=$zipName"
-if (-not $zipName) {
-    Write-Log "FATAL: pending zip name empty"
-    exit 1
-}
-$zipPath = Join-Path $Upd $zipName
-if (-not (Test-Path $zipPath)) {
-    Write-Log "FATAL: zip not found: $zipPath"
-    exit 1
-}
-
-# ---- 3. extract to temp dir ----
-$Tmp = Join-Path $Base "__update_tmp"
-if (Test-Path $Tmp) { Remove-Item -Recurse -Force $Tmp }
-New-Item -ItemType Directory -Path $Tmp | Out-Null
-Write-Log "extracting $zipName ..."
-Expand-Archive -Path $zipPath -DestinationPath $Tmp -Force
-$srcExe = Join-Path $Tmp "ShyBoard.exe"
-if (-not (Test-Path $srcExe)) {
-    Write-Log "FATAL: extracted zip has no ShyBoard.exe"
-    Remove-Item -Recurse -Force $Tmp
-    exit 1
-}
-$srcSize = (Get-Item $srcExe).Length
-Write-Log "extract OK, src exe size=$srcSize"
-
-# ---- 4. replace exe (with size verification) ----
-$exe = Join-Path $Base "ShyBoard.exe"
-Remove-Item $exe -Force -ErrorAction SilentlyContinue
-Copy-Item $srcExe $exe -Force
-$newSize = (Get-Item $exe).Length
-Write-Log "installed exe size=$newSize"
-if ($newSize -ne $srcSize) {
-    Write-Log "FATAL: exe size mismatch, update aborted"
-    Remove-Item -Recurse -Force $Tmp
-    exit 1
-}
-Write-Log "exe replaced and verified OK"
-
-# ---- 5. replace _internal ----
-$internal = Join-Path $Base "_internal"
-if (Test-Path $internal) { Remove-Item -Recurse -Force $internal }
-$srcInternal = Join-Path $Tmp "_internal"
-if (Test-Path $srcInternal) {
-    Copy-Item $srcInternal $internal -Recurse -Force
-    Write-Log "_internal replaced"
-} else {
-    Write-Log "WARN: zip has no _internal, skipping"
-}
-
-# ---- 6. cleanup ----
-Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
-Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-Remove-Item $PendingFile -Force -ErrorAction SilentlyContinue
-Write-Log "cleanup done"
-
-# ---- 7. restart with original port ----
-# Port is stored in data/port.txt by the app itself; pass it
-# back via --port so the restarted instance keeps its port.
-$restartArgs = @()
-$portFile = Join-Path $Data "port.txt"
-if (Test-Path $portFile) {
-    $port = (Get-Content $portFile -Raw).Trim()
-    if ($port -match '^\d+$') {
-        $restartArgs = @("--port", $port)
-        Write-Log "restarting with port $port"
+    $manifest = Get-Content -LiteralPath $srcManifest -Raw | ConvertFrom-Json
+    if ([string]$manifest.format -ne "shyboard-release") { throw "release manifest format is invalid" }
+    if (([string]$manifest.version).TrimStart('v') -ne $PendingVersion.TrimStart('v')) {
+        throw "release manifest version does not match pending version"
     }
-}
-try {
-    Start-Process -FilePath (Join-Path $Base "ShyBoard.exe") -ArgumentList $restartArgs -WorkingDirectory $Base
-    Write-Log "restarted ShyBoard"
+    if ((Get-Item -LiteralPath $srcExe).Length -le 0 -or (Get-Item -LiteralPath $srcMcp).Length -le 0) {
+        throw "package executable is empty"
+    }
+    Write-Log "preflight validation passed for $PendingVersion"
+
+    if (Test-Path -LiteralPath $Exe) { Move-Item -LiteralPath $Exe -Destination (Join-Path $Backup "ShyBoard.exe") -Force }
+    if (Test-Path -LiteralPath $McpExe) { Move-Item -LiteralPath $McpExe -Destination (Join-Path $Backup "ShyBoard-MCP.exe") -Force }
+    if (Test-Path -LiteralPath $Internal) { Move-Item -LiteralPath $Internal -Destination (Join-Path $Backup "_internal") -Force }
+    if (Test-Path -LiteralPath $SelfScript) { Copy-Item -LiteralPath $SelfScript -Destination (Join-Path $Backup "update.ps1") -Force }
+    $InstallTouched = $true
+
+    Copy-Item -LiteralPath $srcExe -Destination $Exe -Force
+    Copy-Item -LiteralPath $srcMcp -Destination $McpExe -Force
+    Move-Item -LiteralPath $srcInternal -Destination $Internal -Force
+    Copy-Item -LiteralPath $srcScript -Destination $SelfScript -Force
+    if ((Get-Sha256 $Exe) -ne (Get-Sha256 $srcExe)) {
+        throw "installed ShyBoard.exe verification failed"
+    }
+    if ((Get-Sha256 $McpExe) -ne (Get-Sha256 $srcMcp)) {
+        throw "installed ShyBoard-MCP.exe verification failed"
+    }
+    Write-Log "files installed and verified"
+
+    $StartedProcess = Start-InstalledApp $true
+    Write-Result "success" $PendingVersion "Update installed and verified."
+    Remove-ExactPath $Stage $Upd
+    Remove-ExactPath $Backup $Upd
+    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $PendingFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Upd "check_cache.json") -Force -ErrorAction SilentlyContinue
+    Write-Log "update completed successfully"
+    exit 0
 } catch {
-    Write-Log "FATAL: restart failed: $_"
+    $failure = $_.Exception.Message
+    Write-Log "ERROR: $failure"
+    if ($InstallTouched) {
+        try { Restore-PreviousInstall }
+        catch { Write-Log "FATAL: rollback failed: $($_.Exception.Message)" }
+    }
+    if ($Stage) {
+        try { Remove-ExactPath $Stage $Upd } catch {}
+    }
+    if ($Backup) {
+        try { Remove-ExactPath $Backup $Upd } catch {}
+    }
+    Remove-Item -LiteralPath $PendingFile -Force -ErrorAction SilentlyContinue
+    Write-Result "failed" $PendingVersion ("Update failed and the previous version was restored: " + $failure)
+    if (-not $NoRestart) {
+        try { Start-InstalledApp $false | Out-Null }
+        catch { Write-Log "FATAL: failed to restart previous version: $($_.Exception.Message)" }
+    }
     exit 1
 }
-
-Write-Log "updater v4 done"
-exit 0

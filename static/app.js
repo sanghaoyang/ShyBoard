@@ -2011,9 +2011,10 @@ let _updateInfo = null;
 async function checkUpdate() {
   const btn = $("#btn-update");
   btn.disabled = true;
-  btn.textContent = "…";
+  btn.classList.add("is-checking");
+  btn.setAttribute("aria-busy", "true");
   try {
-    const r = await api("/api/update/check");
+    const r = await api("/api/update/check?force=1");
     if (r.error) { toast(r.error); return; }
     if (!r.has_update) {
       toast(`已是最新版本 v${APP_VERSION_TEXT}（GitHub: ${r.tag || "?"}）`);
@@ -2035,7 +2036,8 @@ async function checkUpdate() {
     toast("检查更新失败：" + (e.message || "网络问题"));
   } finally {
     btn.disabled = false;
-    btn.textContent = "⬆";
+    btn.classList.remove("is-checking");
+    btn.removeAttribute("aria-busy");
   }
 }
 
@@ -2051,16 +2053,11 @@ async function downloadUpdate() {
     <div class="upd-bar"><div class="upd-bar-fill" id="upd-fill" style="width:0%"></div></div>
     <div class="upd-meta" id="upd-meta">准备下载…</div>`;
   openModal(false);
-  let cancelled = false;
   let pollTimer = null;
   try {
     const d = await api("/api/update/download", {
       method: "POST",
-      body: JSON.stringify({
-        url: _updateInfo.download_url,
-        filename: _updateInfo.asset_name,
-        version: _updateInfo.tag,
-      }),
+      body: JSON.stringify({ tag: _updateInfo.tag }),
     });
     if (d.error) { closeModal(); toast(d.error); return; }
     // 下载完成后轮询确认进度 100%（流式写盘可能略滞后）
@@ -2074,9 +2071,8 @@ async function downloadUpdate() {
         } catch (e) { /* 继续等 */ }
       }, 250);
     });
-    if (cancelled) return;
     $("#upd-fill").style.width = "100%";
-    $("#upd-meta").textContent = "下载完成 ✓";
+    $("#upd-meta").textContent = "下载与安全校验完成 ✓";
     // 用户已点过"下载并更新"，下载完直接应用（不再二次确认）
     await new Promise((r) => setTimeout(r, 600));  // 让"下载完成 ✓"停留一瞬
     closeModal();
@@ -2095,7 +2091,10 @@ setInterval(async () => {
   if (!fill || !meta || $("#modal-title").textContent !== "正在下载更新") return;
   try {
     const p = await api("/api/update/progress");
-    if (p && p.percent > 0 && !p.done) {
+    if (p && p.error) {
+      meta.textContent = p.error;
+      fill.classList.add("error");
+    } else if (p && p.percent > 0 && !p.done) {
       const pct = Math.min(100, Math.round(p.percent));
       fill.style.width = pct + "%";
       const mb = (n) => (n / 1048576).toFixed(1);
@@ -2106,3 +2105,22 @@ setInterval(async () => {
     }
   } catch (e) { /* 忽略 */ }
 }, 1000);
+
+async function showUpdateResult() {
+  try {
+    const result = await api("/api/update/result");
+    if (!result || !result.status) return;
+    if (result.status === "success") {
+      toast(`已安全更新到 ${result.version || "最新版本"}`);
+      return;
+    }
+    $("#modal-title").textContent = "更新未完成";
+    $("#modal-body").innerHTML = `
+      <p style="font-size:13px;line-height:1.75;color:var(--text)">新版没有通过完整性或启动验证，ShyBoard 已自动恢复到更新前的版本，你的数据没有被替换。</p>
+      ${result.message ? `<details style="margin-top:10px;font-size:12px;color:var(--text-dim)"><summary style="cursor:pointer">查看技术信息</summary><div style="margin-top:8px;white-space:pre-wrap;word-break:break-word">${esc(result.message)}</div></details>` : ""}
+      <div class="modal-actions" style="margin-top:14px"><button class="btn primary" onclick="closeModal()">知道了</button></div>`;
+    openModal(false);
+  } catch (_) { /* 无更新结果时静默 */ }
+}
+
+setTimeout(showUpdateResult, 5000);

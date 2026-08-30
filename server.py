@@ -76,22 +76,22 @@ def integration_info():
 @app.get("/api/update/check")
 def update_check():
     """检查 GitHub 最新版本。返回 {tag, has_update, ...}"""
-    return jsonify(updater.check(APP_VERSION))
+    force = request.args.get("force", "0") == "1"
+    return jsonify(updater.check(APP_VERSION, force=force))
 
 
 @app.post("/api/update/download")
 def update_download():
-    """下载新版本 zip 到 data/updates/ 并写 pending 缓存（不立即安装）。
-    body: {url, filename, version}"""
+    """按 GitHub 最新 Release 下载、校验并保存待安装包。body: {tag}"""
     data = request.get_json(silent=True) or {}
-    url = str(data.get("url", "")).strip()
-    filename = str(data.get("filename", "workbench.zip")).strip()
-    version = str(data.get("version", "")).strip()
-    if not url.startswith("https://github.com/"):
-        return jsonify({"error": "下载地址无效"}), 400
+    tag = str(data.get("tag", "")).strip()
+    if not tag:
+        return jsonify({"error": "缺少更新版本"}), 400
     try:
-        path = updater.download(url, filename, version=version)
-        return jsonify({"ok": True, "path": path, "pending": bool(version)})
+        result = updater.download_release(APP_VERSION, tag)
+        return jsonify({"ok": True, "pending": True, **result})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as e:
         return jsonify({"error": f"下载失败：{e}"}), 502
 
@@ -118,6 +118,12 @@ def update_apply():
         return jsonify({"ok": True, "message": "更新已开始，应用将自动重启"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/update/result")
+def update_result():
+    """新进程启动后读取一次安装结果，用于提示成功或已回滚。"""
+    return jsonify(updater.consume_result() or {})
 
 
 @app.get("/api/stats")

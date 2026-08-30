@@ -35,7 +35,7 @@ PREFERRED_PORT = 17890
 HEALTH_PATH = "/api/health"
 
 # 全新版本线从 0.1.0 起步；发布时与对应安装包版本保持一致。
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 
 # 测试版标识：exe 名含 "Beta"（如 ShyBoardBeta.exe）即为测试版——
 # 隐藏顶栏 ⬆ 自动更新按钮（测试版不走 GitHub release 更新），顶栏显示 Beta 徽标。
@@ -210,18 +210,18 @@ def _run_window(port):
 
 
 def _ensure_update_ps1():
-    """自愈：确保安装目录存在 update.ps1（更新机制依赖它）。
+    """自愈：确保安装目录使用当前包内的 update.ps1。
 
-    打包后 update.ps1 在 _internal（sys._MEIPASS）里。若安装目录缺失
-    （旧版升级上来，旧 update.bat 只替换 exe/_internal 不带 ps1），
-    启动时从打包资源复制一份，保证下一次自动更新可用。
+    旧版 helper 只替换 exe/_internal，不会更新外置 update.ps1。新版首次
+    启动时比较内容并覆盖旧 helper，保证后续更新具备校验和回滚能力。
     """
     target = os.path.join(BASE_DIR, "update.ps1")
-    if os.path.exists(target):
-        return
     try:
         bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "update.ps1")
-        if os.path.exists(bundled):
+        if not os.path.exists(bundled):
+            return
+        import filecmp
+        if not os.path.exists(target) or not filecmp.cmp(bundled, target, shallow=False):
             import shutil
             shutil.copy2(bundled, target)
     except Exception:
@@ -274,8 +274,10 @@ def _try_pending_update():
     try:
         updater.apply()
         return True
-    except Exception:
-        # helper 启动失败不阻塞正常启动（pending 保留，可下次再试）
+    except Exception as exc:
+        # 校验或 helper 启动失败时取消待安装状态，避免每次启动重复弹窗。
+        updater.record_result("failed", version, f"更新未开始：{exc}")
+        updater.clear_pending()
         return False
 
 

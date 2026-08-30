@@ -33,6 +33,19 @@ ShyBoard 是一个面向 Windows 的本地个人工作台，把任务、进度�
 
 便携目录可以直接移动到另一台 Windows 电脑。升级时替换程序文件即可，`data/` 目录应当保留。
 
+## 自动更新
+
+在“设置 → 关于”中选择“检查更新”，ShyBoard 会从 GitHub Releases 获取最新稳定版。更新包下载完成后会先核对来源、文件大小、SHA-256 摘要、压缩包结构和版本清单，再退出应用并替换程序文件。
+
+新版启动后还会进行本地健康检查。只有版本和服务状态都正确，更新才会被确认；如果安装、启动或版本检查失败，程序会自动恢复更新前的 `ShyBoard.exe`、`ShyBoard-MCP.exe`、`update.ps1` 和 `_internal/`。`data/` 始终留在原位置，不参与替换。
+
+正式 Release 必须同时包含以下两个附件：
+
+- `ShyBoard-Portable.zip`
+- `ShyBoard-Portable.zip.sha256`
+
+创建并推送形如 `v0.1.1` 的版本标签后，GitHub Actions 会在 Windows 环境构建便携包、核对标签与应用版本，并上传这两个附件。发布仓库必须允许客户端匿名读取 Release；私有仓库的匿名 GitHub API 无法供普通用户检查更新。
+
 ## 直接使用
 
 便携版目录结构如下：
@@ -193,4 +206,4 @@ ShyBoard-source/
 └── requirements.txt
 ```
 
-当前版本：`0.1.0`
+当前版本：`0.1.1`

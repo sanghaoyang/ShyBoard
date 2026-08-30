@@ -386,6 +386,8 @@ body[data-theme="dark"] .global-search-wrap { background: rgba(255,255,255,.035)
 .global-search-wrap kbd, .heading-actions kbd { border-color: rgba(var(--ink-rgb),.09); background: rgba(var(--surface-rgb),.56); box-shadow: 0 1px 1px rgba(var(--shadow-rgb),.04); }
 .top-icon { width: 34px; height: 34px; padding: 8px; border-radius: 10px; }
 .top-icon:hover { transform: translateY(-1px); }
+.top-icon.is-checking svg { animation: update-check-spin .85s linear infinite; }
+@keyframes update-check-spin { to { transform: rotate(360deg); } }
 .tb-beta { font-family: var(--font-numeric); font-size: calc(10px + var(--font-bump)); letter-spacing: .06em; padding: 2px 7px; }
 .weather-pill { min-height: 36px; padding: 5px 12px 5px 9px; border-color: rgba(var(--ink-rgb),.095); background: rgba(var(--surface-rgb),.52); box-shadow: 0 3px 10px rgba(var(--shadow-rgb),.035); }
 #w-temp { font-family: var(--font-numeric); font-size: calc(15px + var(--font-bump)); font-weight: 680; }
@@ -689,6 +691,7 @@ body[data-theme="dark"] .settings-list { background: rgba(0,0,0,.08); }
 .data-transfer-actions { flex: 0 0 auto; display: flex; gap: 8px; }
 .data-transfer-actions .btn { min-width: 94px; }
 .data-transfer-note { margin: 10px 2px 0; color: var(--text-dim); font-size: calc(9.5px + var(--font-bump)); line-height: 1.6; }
+.upd-bar-fill.error { background: var(--high); }
 
 /* The single task-creation surface opened from the top-right action. */
 .modal.create-task-modal { width: min(560px, 92vw); }

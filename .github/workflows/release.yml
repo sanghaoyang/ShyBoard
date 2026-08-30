@@ -1,0 +1,48 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+      - name: Build portable package
+        shell: cmd
+        run: build_portable.bat
+
+      - name: Verify tag and package
+        shell: pwsh
+        run: .\scripts\package_release.ps1 -ExpectedVersion "${{ github.ref_name }}"
+
+      - name: Publish GitHub Release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "${{ github.ref_name }}" --title "ShyBoard ${{ github.ref_name }}" --generate-notes
+          }
+          gh release upload "${{ github.ref_name }}" `
+            ".\dist\ShyBoard-Portable.zip" `
+            ".\dist\ShyBoard-Portable.zip.sha256" `
+            --clobber
