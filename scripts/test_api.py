@@ -334,6 +334,9 @@ check("番茄钟时长会保存", "POMO_FOCUS_KEY" in script_text
       and "pomoDurationChanged" in script_text and "pomoTogglePause" in script_text, script_text[:120])
 check("字体档位会应用并保存", "applyFontSize" in script_text
       and 'JSON.stringify({ font_size: fontSize })' in script_text, script_text[:120])
+check("日历记录使用后端主通道", "calendarApiRecord(d.logs, dateStr)" in script_text
+      and "calendarApiRecord(cal.logs, _dayModalDate)" in script_text
+      and 'api("/api/log"' in script_text, script_text[:120])
 s, body = req_raw("GET", "/redesign.js")
 redesign_text = body.decode("utf-8")
 check("任务标签与日期分行", 'class="task-tags"' in redesign_text

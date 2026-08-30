@@ -1179,6 +1179,15 @@ function calendarRecord(dateStr) {
   return String((_calendarRecords && _calendarRecords[dateStr]) || "");
 }
 
+function calendarApiRecord(logs, dateStr) {
+  const day = String(Number(dateStr.slice(8, 10)));
+  if (logs && Object.prototype.hasOwnProperty.call(logs, day)) {
+    return String(logs[day] || "");
+  }
+  // 兼容升级前保存在隐藏便签 / localStorage 中的每日记录。
+  return calendarRecord(dateStr);
+}
+
 function qingmingDay(year) {
   const y = year % 100;
   const constant = year < 2000 ? 5.59 : 4.81;
@@ -1229,7 +1238,7 @@ async function loadCalendar() {
       const annHtml = anns.map((a) => `<div class="cal-ann" title="${esc(a.name)}">🎂 ${esc(a.name)}</div>`).join("");
       const recurring = d.recurring_tasks && d.recurring_tasks[day] || [];
       const recurringHtml = recurring.map((task) => `<div class="cal-recurring ${task.completed ? "completed" : ""}" title="${esc(task.schedule_label)} · ${task.completed ? "已完成" : "待完成"}"><span aria-hidden="true">↻</span>${esc(task.title)}${task.completed ? " · 已完成" : ""}</div>`).join("");
-      const record = calendarRecord(dateStr);
+      const record = calendarApiRecord(d.logs, dateStr);
       const recordHtml = record
         ? `<div class="cal-record" title="${esc(record)}">📝 ${esc(record.replace(/\s+/g, " "))}</div>`
         : "";
@@ -1280,7 +1289,7 @@ async function loadDayModal() {
     const festivalHtml = festivals.map((festival) =>
       `<span class="cal-day-festival ${festival.type === "special" ? "special" : ""}">${esc(festival.name)}</span>`
     ).join("");
-    const record = calendarRecord(_dayModalDate);
+    const record = calendarApiRecord(cal.logs, _dayModalDate);
     const recurringHtml = recurring.length ? recurring.map((task) => `
       <div class="cal-day-recurring ${task.completed ? "completed" : ""}"><span class="cal-day-recurring-mark">↻</span><div><strong>${esc(task.title)}</strong><small>${esc(task.schedule_label)} · ${task.completed ? "已完成" : "待完成"}</small></div></div>`).join("") : "";
     $("#modal-title").textContent = dayTitle(_dayModalDate);
@@ -1302,14 +1311,16 @@ async function loadDayModal() {
 
 async function saveDayRecord() {
   if (!_dayModalDate) return;
-  await ensureCalendarRecords();
   const content = $("#day-record").value.trim();
-  if (content) _calendarRecords[_dayModalDate] = content;
-  else delete _calendarRecords[_dayModalDate];
-  const synced = await persistCalendarRecords(_dayModalDate, content);
-  closeModal();
-  loadCalendar();
-  toast(content ? (synced ? "每日记录已保存" : "每日记录已保存在本机") : "每日记录已清空");
+  try {
+    await api("/api/log", {
+      method: "PUT",
+      body: JSON.stringify({ date: _dayModalDate, content }),
+    });
+    closeModal();
+    loadCalendar();
+    toast(content ? "每日记录已保存" : "每日记录已清空");
+  } catch (e) { toast(e.message); }
 }
 
 function openDayModal(dateStr) {
