@@ -19,6 +19,7 @@ DEFAULT_SETTINGS = {
     "lat": "31.2304",
     "lon": "121.4737",
     "theme": "pink",
+    "font_size": "normal",
     "autostart": "0",
     "confirm_delete_task": "1",
     "confirm_delete_link": "1",
@@ -55,6 +56,7 @@ def init_db():
                 status       TEXT DEFAULT 'todo' CHECK(status IN ('todo','doing','done')),
                 priority     TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high')),
                 due_date     TEXT DEFAULT '',
+                remind_days  INTEGER DEFAULT 3 CHECK(remind_days BETWEEN -1 AND 365),
                 tags         TEXT DEFAULT '',
                 source       TEXT DEFAULT 'manual' CHECK(source IN ('manual','agent')),
                 project_id   TEXT DEFAULT '',
@@ -123,6 +125,26 @@ def init_db():
                 content    TEXT NOT NULL,
                 updated_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS recurring_tasks (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                title          TEXT NOT NULL,
+                description    TEXT DEFAULT '',
+                schedule_type  TEXT NOT NULL CHECK(schedule_type IN ('weekly','monthly')),
+                schedule_value INTEGER NOT NULL CHECK(schedule_value BETWEEN 1 AND 31),
+                remind_days    INTEGER DEFAULT 1 CHECK(remind_days BETWEEN -1 AND 365),
+                enabled        INTEGER DEFAULT 1 CHECK(enabled IN (0,1)),
+                created_at     TEXT,
+                updated_at     TEXT
+            );
+            CREATE TABLE IF NOT EXISTS recurring_completions (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                recurring_task_id INTEGER NOT NULL REFERENCES recurring_tasks(id) ON DELETE CASCADE,
+                scheduled_date    TEXT NOT NULL,
+                completed_at      TEXT NOT NULL,
+                UNIQUE(recurring_task_id, scheduled_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_recurring_completions_task
+                ON recurring_completions(recurring_task_id, scheduled_date DESC);
             """
         )
         for k, v in DEFAULT_SETTINGS.items():
@@ -204,12 +226,14 @@ def _migrate_task_progress(conn):
 
 
 def _migrate_tasks(conn):
-    """为旧任务表补充项目和外部键字段。"""
+    """为旧任务表补充后续版本加入的字段。"""
     columns = {row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
     if "project_id" not in columns:
         conn.execute("ALTER TABLE tasks ADD COLUMN project_id TEXT DEFAULT ''")
     if "external_key" not in columns:
         conn.execute("ALTER TABLE tasks ADD COLUMN external_key TEXT DEFAULT ''")
+    if "remind_days" not in columns:
+        conn.execute("ALTER TABLE tasks ADD COLUMN remind_days INTEGER DEFAULT 3")
 
 
 # ---------------- 项目 ----------------
@@ -245,17 +269,17 @@ def get_project(project_id):
 # ---------------- 任务 ----------------
 
 def create_task(title, description="", status="todo", priority="medium",
-                due_date="", tags="", source="manual", project_id="",
+                due_date="", remind_days=3, tags="", source="manual", project_id="",
                 external_key=""):
     now = _now()
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO tasks (title, description, status, priority, due_date,
-                                  tags, source, project_id, external_key,
+                                  remind_days, tags, source, project_id, external_key,
                                   created_at, updated_at, completed_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (title, description, status, priority, due_date, tags, source,
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (title, description, status, priority, due_date, remind_days, tags, source,
              project_id, external_key, now, now, now if status == "done" else ""),
         )
         task_id = cur.lastrowid
@@ -319,7 +343,7 @@ def get_task(task_id):
 
 
 def update_task(task_id, **fields):
-    allowed = {"title", "description", "status", "priority", "due_date", "tags", "project_id", "external_key"}
+    allowed = {"title", "description", "status", "priority", "due_date", "remind_days", "tags", "project_id", "external_key"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return get_task(task_id)
@@ -362,6 +386,146 @@ def delete_task(task_id):
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+
+# ---------------- 定时任务 ----------------
+
+def create_recurring_task(title, schedule_type, schedule_value, description="",
+                          remind_days=1, enabled=True):
+    now = _now()
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO recurring_tasks
+               (title, description, schedule_type, schedule_value, remind_days,
+                enabled, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (title, description, schedule_type, schedule_value, remind_days,
+             1 if enabled else 0, now, now),
+        )
+        conn.commit()
+        return get_recurring_task(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+def list_recurring_tasks(include_disabled=True):
+    conn = get_conn()
+    try:
+        where = "" if include_disabled else "WHERE r.enabled = 1"
+        rows = conn.execute(
+            f"""SELECT r.*,
+                       COUNT(c.id) AS completion_count,
+                       MAX(c.completed_at) AS last_completed_at
+                FROM recurring_tasks r
+                LEFT JOIN recurring_completions c ON c.recurring_task_id = r.id
+                {where}
+                GROUP BY r.id
+                ORDER BY r.enabled DESC, r.updated_at DESC, r.id DESC"""
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_recurring_task(recurring_task_id):
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            """SELECT r.*,
+                      COUNT(c.id) AS completion_count,
+                      MAX(c.completed_at) AS last_completed_at
+               FROM recurring_tasks r
+               LEFT JOIN recurring_completions c ON c.recurring_task_id = r.id
+               WHERE r.id = ? GROUP BY r.id""",
+            (recurring_task_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_recurring_task(recurring_task_id, **fields):
+    allowed = {"title", "description", "schedule_type", "schedule_value",
+               "remind_days", "enabled"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if not updates:
+        return get_recurring_task(recurring_task_id)
+    updates["updated_at"] = _now()
+    conn = get_conn()
+    try:
+        exists = conn.execute(
+            "SELECT id FROM recurring_tasks WHERE id = ?", (recurring_task_id,)
+        ).fetchone()
+        if not exists:
+            return None
+        sets = ", ".join(f"{key} = ?" for key in updates)
+        conn.execute(
+            f"UPDATE recurring_tasks SET {sets} WHERE id = ?",
+            (*updates.values(), recurring_task_id),
+        )
+        conn.commit()
+        return get_recurring_task(recurring_task_id)
+    finally:
+        conn.close()
+
+
+def delete_recurring_task(recurring_task_id):
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "DELETE FROM recurring_tasks WHERE id = ?", (recurring_task_id,)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def complete_recurring_task(recurring_task_id, scheduled_date):
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO recurring_completions
+               (recurring_task_id, scheduled_date, completed_at)
+               VALUES (?,?,?)""",
+            (recurring_task_id, scheduled_date, _now()),
+        )
+        conn.commit()
+        row = conn.execute(
+            """SELECT * FROM recurring_completions
+               WHERE recurring_task_id = ? AND scheduled_date = ?""",
+            (recurring_task_id, scheduled_date),
+        ).fetchone()
+        return dict(row) if row else None, cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_recurring_completions(recurring_task_id, limit=100):
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT * FROM recurring_completions
+               WHERE recurring_task_id = ?
+               ORDER BY scheduled_date DESC, id DESC LIMIT ?""",
+            (recurring_task_id, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def delete_recurring_completion(completion_id):
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "DELETE FROM recurring_completions WHERE id = ?", (completion_id,)
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 

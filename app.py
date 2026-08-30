@@ -34,8 +34,8 @@ WEBVIEW_DIR = os.path.join(DATA_DIR, "webview")
 PREFERRED_PORT = 17890
 HEALTH_PATH = "/api/health"
 
-# 应用版本：发布时手动递增，与 GitHub Release tag 对应（如 v1.1.0）
-APP_VERSION = "2.1.0"
+# 全新版本线从 0.1.0 起步；发布时与对应安装包版本保持一致。
+APP_VERSION = "0.1.0"
 
 # 测试版标识：exe 名含 "Beta"（如 ShyBoardBeta.exe）即为测试版——
 # 隐藏顶栏 ⬆ 自动更新按钮（测试版不走 GitHub release 更新），顶栏显示 Beta 徽标。

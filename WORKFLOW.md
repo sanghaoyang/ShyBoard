@@ -53,8 +53,7 @@ pythonw app.py          # 或 python app.py（会自动后台化）
 
 ## 三、MCP 首次接入（推荐）
 
-把 `source/mcp-config.example.json` 中的路径复制到你的 MCP 宿主配置，并改成实际的
-`source/run_mcp.bat` 路径。Bridge 使用 stdio 启动，不需要 ShyBoard 窗口或端口。
+在 ShyBoard 左侧打开“AI 接入”，复制 MCP 安装提示词，让 Agent 自动识别安装目录并按当前产品的规范完成配置。手动配置时，将 `mcp-config.example.json` 中的命令改为便携包内 `ShyBoard-MCP.exe` 的绝对路径。Bridge 使用 stdio 启动，不需要端口。
 
 在项目根目录调用一次 `shyboard_link_project`，随后每次会话先调用
 `shyboard_get_project_context`。项目根目录的 `.shyboard/project.json` 是跨 Agent、跨会话的

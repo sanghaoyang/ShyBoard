@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -31,10 +31,15 @@ VALID_PRIORITY = {"low", "medium", "high"}
 def _parse_tags(tags):
     if tags is None:
         return ""
-    if isinstance(tags, list):
-        return ",".join(str(t).strip() for t in tags if str(t).strip())
-    parts = [p.strip() for p in str(tags).split(",") if p.strip()]
-    return ",".join(parts)
+    # 兼容网页标签编辑器、中文输入法和第三方 API：不再要求英文逗号。
+    values = tags if isinstance(tags, list) else [tags]
+    parts = [
+        part.strip()
+        for value in values
+        for part in re.split(r"[,，、;；\n\r]+", str(value))
+        if part.strip()
+    ]
+    return ",".join(dict.fromkeys(parts))
 
 
 def _task_out(row):
@@ -48,6 +53,20 @@ def _task_out(row):
 def health():
     return jsonify({"ok": True, "service": "workbench", "version": APP_VERSION,
                     "beta": bool(IS_BETA)})
+
+
+@app.get("/api/integration")
+def integration_info():
+    """Return capabilities for the in-app Agent guide without exposing user paths."""
+    if getattr(sys, "frozen", False):
+        mcp_available = os.path.isfile(os.path.join(BASE_DIR, "ShyBoard-MCP.exe"))
+    else:
+        mcp_available = os.path.isfile(os.path.join(BASE_DIR, "run_mcp.bat"))
+    return jsonify({
+        "platform": "windows",
+        "rest_available": True,
+        "mcp_available": mcp_available,
+    })
 
 
 # ---------------- 更新 ----------------
@@ -151,6 +170,15 @@ def _validate_due_date(value):
     return None
 
 
+def _validate_remind_days(value):
+    """-1 表示不提醒；其余值是截止日前的提醒天数。"""
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        return None
+    return days if -1 <= days <= 365 else None
+
+
 @app.post("/api/tasks")
 def tasks_create():
     data = request.get_json(silent=True) or {}
@@ -169,6 +197,9 @@ def tasks_create():
     due_date = _validate_due_date(data.get("due_date", ""))
     if due_date is None:
         return jsonify({"error": "due_date 格式应为 YYYY-MM-DD"}), 400
+    remind_days = _validate_remind_days(data.get("remind_days", 3))
+    if remind_days is None:
+        return jsonify({"error": "remind_days 必须是 -1 到 365 之间的整数"}), 400
     project_id = str(data.get("project_id", "")).strip()
     external_key = str(data.get("external_key", "")).strip()
 
@@ -178,6 +209,7 @@ def tasks_create():
         status=status,
         priority=priority,
         due_date=due_date,
+        remind_days=remind_days,
         tags=_parse_tags(data.get("tags")),
         source=source,
         project_id=project_id,
@@ -221,6 +253,11 @@ def tasks_update(task_id):
         if due is None:
             return jsonify({"error": "due_date 格式应为 YYYY-MM-DD"}), 400
         fields["due_date"] = due
+    if "remind_days" in data:
+        remind_days = _validate_remind_days(data["remind_days"])
+        if remind_days is None:
+            return jsonify({"error": "remind_days 必须是 -1 到 365 之间的整数"}), 400
+        fields["remind_days"] = remind_days
     if "tags" in data:
         fields["tags"] = _parse_tags(data["tags"])
     if "project_id" in data:
@@ -236,6 +273,160 @@ def tasks_delete(task_id):
     if not db.get_task(task_id):
         return jsonify({"error": "任务不存在"}), 404
     db.delete_task(task_id)
+    return jsonify({"ok": True})
+
+
+# ---------------- 定时任务 ----------------
+
+def _recurring_matches(task, value):
+    if task["schedule_type"] == "weekly":
+        return value.isoweekday() == int(task["schedule_value"])
+    import calendar
+    expected = min(int(task["schedule_value"]), calendar.monthrange(value.year, value.month)[1])
+    return value.day == expected
+
+
+def _recurring_schedule_label(task):
+    if task["schedule_type"] == "weekly":
+        labels = {1: "每周一", 2: "每周二", 3: "每周三", 4: "每周四", 5: "每周五", 6: "每周六", 7: "每周日"}
+        return labels.get(int(task["schedule_value"]), "每周")
+    day = int(task["schedule_value"])
+    return "每月最后一天" if day == 31 else f"每月 {day} 日"
+
+
+def _recurring_next_date(task, start=None):
+    if not int(task.get("enabled", 1)):
+        return ""
+    cursor = start or date.today()
+    completed = {
+        item["scheduled_date"]
+        for item in db.list_recurring_completions(task["id"], limit=500)
+    }
+    for offset in range(0, 370):
+        candidate = cursor + timedelta(days=offset)
+        key = candidate.isoformat()
+        if _recurring_matches(task, candidate) and key not in completed:
+            return key
+    return ""
+
+
+def _recurring_out(task, include_history=False):
+    row = dict(task)
+    row["enabled"] = bool(row.get("enabled", 1))
+    row["schedule_label"] = _recurring_schedule_label(row)
+    row["next_due_date"] = _recurring_next_date(row)
+    if row["next_due_date"]:
+        row["days_until"] = (date.fromisoformat(row["next_due_date"]) - date.today()).days
+    else:
+        row["days_until"] = None
+    if include_history:
+        row["completions"] = db.list_recurring_completions(row["id"], limit=100)
+    return row
+
+
+def _validate_recurring_payload(data, existing=None):
+    fields = {}
+    if existing is None or "title" in data:
+        title = str(data.get("title", existing["title"] if existing else "")).strip()
+        if not title:
+            return None, "title 不能为空"
+        fields["title"] = title
+    if "description" in data:
+        fields["description"] = str(data.get("description", "")).strip()
+    schedule_type = str(data.get("schedule_type", existing["schedule_type"] if existing else "weekly")).strip()
+    if schedule_type not in {"weekly", "monthly"}:
+        return None, "schedule_type 必须是 weekly 或 monthly"
+    if existing is None or "schedule_type" in data:
+        fields["schedule_type"] = schedule_type
+    if existing is None or "schedule_value" in data or "schedule_type" in data:
+        try:
+            value = int(data.get("schedule_value", existing["schedule_value"] if existing else 1))
+        except (TypeError, ValueError):
+            return None, "schedule_value 必须是整数"
+        upper = 7 if schedule_type == "weekly" else 31
+        if not 1 <= value <= upper:
+            return None, f"schedule_value 必须是 1 到 {upper}"
+        fields["schedule_value"] = value
+    if existing is None or "remind_days" in data:
+        remind_days = _validate_remind_days(data.get("remind_days", existing["remind_days"] if existing else 1))
+        if remind_days is None:
+            return None, "remind_days 必须是 -1 到 365 之间的整数"
+        fields["remind_days"] = remind_days
+    if "enabled" in data:
+        raw = data["enabled"]
+        fields["enabled"] = 0 if str(raw).strip().lower() in {"0", "false", "off", "no"} else 1
+    return fields, None
+
+
+@app.get("/api/recurring-tasks")
+def recurring_tasks_list():
+    return jsonify([_recurring_out(row) for row in db.list_recurring_tasks()])
+
+
+@app.post("/api/recurring-tasks")
+def recurring_tasks_create():
+    data = request.get_json(silent=True) or {}
+    fields, error = _validate_recurring_payload(data)
+    if error:
+        return jsonify({"error": error}), 400
+    row = db.create_recurring_task(**fields)
+    return jsonify(_recurring_out(row)), 201
+
+
+@app.get("/api/recurring-tasks/<int:recurring_task_id>")
+def recurring_tasks_get(recurring_task_id):
+    row = db.get_recurring_task(recurring_task_id)
+    if not row:
+        return jsonify({"error": "定时任务不存在"}), 404
+    return jsonify(_recurring_out(row, include_history=True))
+
+
+@app.patch("/api/recurring-tasks/<int:recurring_task_id>")
+def recurring_tasks_update(recurring_task_id):
+    row = db.get_recurring_task(recurring_task_id)
+    if not row:
+        return jsonify({"error": "定时任务不存在"}), 404
+    fields, error = _validate_recurring_payload(request.get_json(silent=True) or {}, existing=row)
+    if error:
+        return jsonify({"error": error}), 400
+    updated = db.update_recurring_task(recurring_task_id, **fields)
+    return jsonify(_recurring_out(updated))
+
+
+@app.delete("/api/recurring-tasks/<int:recurring_task_id>")
+def recurring_tasks_delete(recurring_task_id):
+    if not db.delete_recurring_task(recurring_task_id):
+        return jsonify({"error": "定时任务不存在"}), 404
+    return jsonify({"ok": True})
+
+
+@app.post("/api/recurring-tasks/<int:recurring_task_id>/complete")
+def recurring_tasks_complete(recurring_task_id):
+    row = db.get_recurring_task(recurring_task_id)
+    if not row:
+        return jsonify({"error": "定时任务不存在"}), 404
+    data = request.get_json(silent=True) or {}
+    scheduled_date = _validate_due_date(data.get("scheduled_date", ""))
+    if scheduled_date is None:
+        return jsonify({"error": "scheduled_date 格式应为 YYYY-MM-DD"}), 400
+    if not scheduled_date:
+        scheduled_date = _recurring_next_date(row)
+    if not scheduled_date:
+        return jsonify({"error": "当前没有可完成的周期"}), 400
+    scheduled = date.fromisoformat(scheduled_date)
+    if not _recurring_matches(row, scheduled):
+        return jsonify({"error": "该日期不符合定时规则"}), 400
+    completion, created = db.complete_recurring_task(recurring_task_id, scheduled_date)
+    result = _recurring_out(db.get_recurring_task(recurring_task_id), include_history=True)
+    result["completion"] = completion
+    result["already_completed"] = not created
+    return jsonify(result), 201 if created else 200
+
+
+@app.delete("/api/recurring-completions/<int:completion_id>")
+def recurring_completion_delete(completion_id):
+    if not db.delete_recurring_completion(completion_id):
+        return jsonify({"error": "完成记录不存在"}), 404
     return jsonify({"ok": True})
 
 
@@ -708,15 +899,37 @@ def calendar_month():
             day = int(dd[8:10])
             if 1 <= day <= 31:
                 tasks_by_day.setdefault(str(day), []).append({"id": t["id"], "title": t["title"]})
+    # 定时任务按规则投射到本月；完成记录只标记当次，不会终止后续周期。
+    recurring_by_day = {}
+    for recurring in db.list_recurring_tasks(include_disabled=False):
+        completed_dates = {
+            item["scheduled_date"]
+            for item in db.list_recurring_completions(recurring["id"], limit=500)
+            if str(item.get("scheduled_date", "")).startswith(prefix)
+        }
+        for day in range(1, days_in_month + 1):
+            current = date(year, month, day)
+            if not _recurring_matches(recurring, current):
+                continue
+            key = current.isoformat()
+            recurring_by_day.setdefault(str(day), []).append({
+                "id": recurring["id"],
+                "title": recurring["title"],
+                "schedule_label": _recurring_schedule_label(recurring),
+                "completed": key in completed_dates,
+                "remind_days": recurring["remind_days"],
+            })
     # 当月写过日记的日期（v1.0.3：保存后日历格子显示 📝 标记）
     log_days = db.list_log_days(prefix)
     return jsonify({
         "year": year, "month": month, "days": days_in_month,
-        "first_weekday": _cal.monthrange(year, month)[0],
+        # calendar.monthrange uses Monday=0; the UI grid starts on Sunday.
+        "first_weekday": (_cal.monthrange(year, month)[0] + 1) % 7,
         "today": now.strftime("%Y-%m-%d"),
         "lunar": lunar_by_day,
         "anniversaries": anns_by_day,
         "todo_tasks": tasks_by_day,
+        "recurring_tasks": recurring_by_day,
         "holidays": holidays_by_day,
         "logs": log_days,
     })
@@ -808,6 +1021,8 @@ def settings_update():
         "teal", "terracotta", "navy", "graphite", "plum",
     }:
         db.set_setting("theme", str(data["theme"]).strip())
+    if "font_size" in data and str(data["font_size"]).strip() in {"normal", "large"}:
+        db.set_setting("font_size", str(data["font_size"]).strip())
     # 直接给城市代码（前端从搜索结果选定）：city + city_code 一起存
     if "city_code" in data and str(data.get("city_code", "")).strip():
         code = str(data["city_code"]).strip()

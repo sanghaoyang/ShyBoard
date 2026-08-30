@@ -38,7 +38,12 @@ async def run() -> None:
         env = os.environ.copy()
         env["SHYBOARD_HOME"] = str(ROOT.parent)
         env["WORKBENCH_DB"] = str(temp_db)
-        params = StdioServerParameters(command=sys.executable, args=[str(SERVER)], env=env)
+        packaged_command = os.environ.get("SHYBOARD_MCP_EXE", "").strip()
+        params = StdioServerParameters(
+            command=packaged_command or sys.executable,
+            args=[] if packaged_command else [str(SERVER)],
+            env=env,
+        )
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -55,8 +60,10 @@ async def run() -> None:
                 }))
                 assert Path(linked["manifest"]).is_file()
                 task = result_json(await session.call_tool("shyboard_create_task", {
-                    "project_path": str(project_dir), "title": "MCP smoke task", "tags": ["smoke", "agent"]
+                    "project_path": str(project_dir), "title": "MCP smoke task",
+                    "remind_days": 7, "tags": ["smoke", "agent"]
                 }))
+                assert task["remind_days"] == 7
                 task_id = task["id"]
                 first = result_json(await session.call_tool("shyboard_append_progress", {
                     "task_id": task_id, "content": "started", "record_id": "smoke-record"

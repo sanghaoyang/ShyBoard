@@ -11,5 +11,9 @@ if not exist ".venv\Scripts\python.exe" (
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean ShyBoardPortable.spec
 if errorlevel 1 exit /b 1
 
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean ShyBoardMCP.spec
+if errorlevel 1 exit /b 1
+
+copy /Y "dist\ShyBoard-MCP.exe" "dist\ShyBoard-Portable\ShyBoard-MCP.exe" >nul
 copy /Y "update.ps1" "dist\ShyBoard-Portable\update.ps1" >nul
 echo Build OK: dist\ShyBoard-Portable\ShyBoard.exe

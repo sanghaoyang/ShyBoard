@@ -56,20 +56,32 @@ def section(title):
 section("1. 健康检查")
 s, d = req("GET", "/api/health")
 check("health 返回 ok", s == 200 and d.get("service") == "workbench", str(d))
+s, d = req("GET", "/api/integration")
+check("AI 接入信息不暴露本机路径", s == 200 and d.get("platform") == "windows"
+      and d.get("rest_available") is True and "api_base" not in d
+      and "mcp_available" in d and "port_file" not in d
+      and "mcp_launcher" not in d, str(d))
 
 # ---------- 2. 任务 CRUD ----------
 section("2. 任务创建（正常 + 边界）")
 s, d = req("POST", "/api/tasks", {
     "title": "QA正常任务", "description": "描述文本", "priority": "high",
-    "due_date": "2026-08-10", "tags": ["qa", "测试"], "source": "agent",
+    "due_date": "2026-08-10", "remind_days": 7, "tags": ["qa", "测试"], "source": "agent",
 })
 check("创建完整字段", s == 201 and d["title"] == "QA正常任务" and d["source"] == "agent"
-      and d["tags"] == ["qa", "测试"] and d["priority"] == "high", str(d)[:120])
+      and d["tags"] == ["qa", "测试"] and d["priority"] == "high"
+      and d["remind_days"] == 7, str(d)[:120])
 tid = d["id"] if d else None
+
+s, d = req("POST", "/api/tasks", {
+    "title": "QA标签分隔", "tags": "工作， 本周、重要；复盘\n稍后",
+})
+check("标签兼容中文标点、分号和换行", s == 201 and d["tags"] == ["工作", "本周", "重要", "复盘", "稍后"], str(d)[:120])
 
 s, d = req("POST", "/api/tasks", {"title": "QA最小字段"})
 check("创建最小字段（默认值）", s == 201 and d["status"] == "todo"
-      and d["priority"] == "medium" and d["source"] == "manual", str(d)[:120])
+      and d["priority"] == "medium" and d["source"] == "manual"
+      and d["remind_days"] == 3, str(d)[:120])
 
 s, d = req("POST", "/api/tasks", {"title": "  "})
 check("空 title 拒绝", s == 400 and "title" in str(d), str(d))
@@ -82,6 +94,9 @@ check("非法 priority 拒绝", s == 400, str(d))
 
 s, d = req("POST", "/api/tasks", {"title": "x", "source": "robot"})
 check("非法 source 拒绝", s == 400, str(d))
+
+s, d = req("POST", "/api/tasks", {"title": "x", "remind_days": 366})
+check("非法提醒天数拒绝", s == 400 and "remind_days" in str(d), str(d))
 
 xss_title = '<script>alert(1)</script> "quotes" \'single\' & <b>粗</b> 😀 emoji'
 s, d = req("POST", "/api/tasks", {"title": xss_title})
@@ -109,8 +124,9 @@ s, d = req("GET", "/api/tasks/999999")
 check("详情不存在 404", s == 404, str(d))
 
 section("2c. 任务更新")
-s, d = req("PATCH", f"/api/tasks/{tid}", {"title": "QA改名", "priority": "low"})
-check("多字段更新", s == 200 and d["title"] == "QA改名" and d["priority"] == "low", str(d)[:100])
+s, d = req("PATCH", f"/api/tasks/{tid}", {"title": "QA改名", "priority": "low", "remind_days": 14})
+check("多字段更新", s == 200 and d["title"] == "QA改名" and d["priority"] == "low"
+      and d["remind_days"] == 14, str(d)[:100])
 s, d = req("PATCH", f"/api/tasks/{tid}", {"status": "doing"})
 check("状态 -> doing", s == 200 and d["status"] == "doing" and d["completed_at"] == "", str(d)[:100])
 s, d = req("PATCH", f"/api/tasks/{tid}", {"status": "done"})
@@ -121,6 +137,8 @@ s, d = req("PATCH", f"/api/tasks/{tid}", {"title": ""})
 check("空 title 更新保留原标题", s == 200 and d["title"] == "QA改名", str(d)[:100])
 s, d = req("PATCH", f"/api/tasks/{tid}", {"status": "nope"})
 check("更新非法 status 拒绝", s == 400, str(d))
+s, d = req("PATCH", f"/api/tasks/{tid}", {"remind_days": -2})
+check("更新非法提醒天数拒绝", s == 400, str(d))
 s, d = req("PATCH", "/api/tasks/999999", {"title": "x"})
 check("更新不存在 404", s == 404, str(d))
 s, d = req("PATCH", f"/api/tasks/{tid}", {})
@@ -221,7 +239,11 @@ check("无结果返回空数组", s == 200 and d == [], str(d))
 # ---------- 6. 设置 ----------
 section("6. 设置")
 s, d = req("GET", "/api/settings")
-check("读取设置", s == 200 and d.get("city") == "上海", str(d)[:100])
+check("读取设置", s == 200 and d.get("city") == "上海" and d.get("font_size") == "normal", str(d)[:100])
+s, d = req("PUT", "/api/settings", {"font_size": "large"})
+check("切换大号字体", s == 200 and d.get("font_size") == "large", str(d)[:100])
+s, d = req("PUT", "/api/settings", {"font_size": "normal"})
+check("恢复正常字体", s == 200 and d.get("font_size") == "normal", str(d)[:100])
 s, d = req("PUT", "/api/settings", {"city_code": "101210101", "city": "杭州"})
 check("切城市（代码）", s == 200 and d.get("city_code") == "101210101" and d.get("city") == "杭州", str(d)[:100])
 s, d = req("GET", "/api/weather")
@@ -283,12 +305,52 @@ def req_raw(method, path):
     except urllib.error.HTTPError as e:
         return e.code, e.read()
 
-for path, expect in [("/", 200), ("/style.css", 200), ("/app.js", 200),
+for path, expect in [("/", 200), ("/style.css", 200), ("/premium.css", 200),
+                     ("/app.js", 200), ("/redesign.js", 200),
                      ("/cities.json", 200), ("/nope.html", 404)]:
     s, body = req_raw("GET", path)
     check(f"GET {path} -> {expect}", s == expect, f"got {s}")
 s, body = req_raw("GET", "/")
 check("首页含 title", b"ShyBoard" in body, "body 无 ShyBoard")
+page_text = body.decode("utf-8")
+check("AI 接入明确二选一", "选择下面任意一种方式即可" in page_text
+      and "agent-mcp-install" in page_text, page_text[:120])
+check("截止提醒替代逾期入口", "id=\"deadline-reminder\"" in page_text
+      and "id=\"nav-overdue\"" not in page_text, page_text[:120])
+check("设置页字体档位替代返回按钮", 'id="font-size-picker"' in page_text
+      and 'data-font-size="normal"' in page_text and 'data-font-size="large"' in page_text
+      and 'id="settings-done"' not in page_text, page_text[:120])
+check("番茄钟具备完整控制", all(x in page_text for x in [
+      'id="focus-page-start"', 'id="focus-page-pause"', 'id="focus-page-stop"',
+      'id="focus-page-break"', 'id="focus-duration"', 'id="break-duration"']), page_text[:120])
+s, body = req_raw("GET", "/app.js")
+script_text = body.decode("utf-8")
+check("通用提示词自动发现端口", "Get-CimInstance Win32_Process" in script_text
+      and "info.port_file" not in script_text and "info.mcp_launcher" not in script_text,
+      script_text[:120])
+check("便签列表不再显示编号", "note-index" not in script_text, script_text[:120])
+check("便签时间精确到分钟", "created_at.slice(5, 16)" in script_text, script_text[:120])
+check("番茄钟时长会保存", "POMO_FOCUS_KEY" in script_text
+      and "pomoDurationChanged" in script_text and "pomoTogglePause" in script_text, script_text[:120])
+check("字体档位会应用并保存", "applyFontSize" in script_text
+      and 'JSON.stringify({ font_size: fontSize })' in script_text, script_text[:120])
+s, body = req_raw("GET", "/redesign.js")
+redesign_text = body.decode("utf-8")
+check("任务标签与日期分行", 'class="task-tags"' in redesign_text
+      and 'class="task-facts"' in redesign_text and '"截止 · "' in redesign_text, redesign_text[:120])
+s, body = req_raw("GET", "/premium.css")
+premium_text = body.decode("utf-8")
+check("雾蓝主题包含暖色层次", "--secondary: #C98A58" in premium_text
+      and 'body:not([data-theme="dark"]) .focus-orbit' in premium_text, premium_text[:120])
+check("主题色卡保持单色", '.theme-opt .th-swatch i:last-child { display: none; }' in premium_text
+      and '.theme-opt[data-theme="dark"] .th-swatch i:first-child { background: #1B1917 !important; }' in premium_text, premium_text[-240:])
+check("浅色主题辅助色各不相同", all(color in premium_text for color in [
+      "--secondary: #71879A", "--secondary: #668D89", "--secondary: #9388A6",
+      "--secondary: #B1788C", "--secondary: #93748D"]), premium_text[:120])
+check("大号字体统一增大", '--font-bump: 1.5px' in premium_text
+      and 'font-size: calc(' in premium_text, premium_text[:120])
+check("日期选择入口清晰", '::-webkit-calendar-picker-indicator' in premium_text
+      and 'border-color: rgba(var(--ink-rgb),.2)' in premium_text, premium_text[:120])
 s, body = req_raw("GET", "/cities.json")
 check("cities.json 是合法 JSON", s == 200, f"got {s}")
 
@@ -405,6 +467,47 @@ s, d = req("GET", f"/api/calendar?month={_cur_year}-10")
 check("国庆节标识（公历固定）", s == 200 and "国庆节" in d.get("holidays", {}).get("1", []), str(d.get("holidays", {}).get("1"))[:80])
 check("普通日无节日标识", s == 200 and "10" not in d.get("holidays", {}), str(d.get("holidays", {}).get("10"))[:80])
 
+# ---------- 11b. 定时任务、提醒与完成历史 ----------
+section("11b. 定时任务")
+s, recurring = req("POST", "/api/recurring-tasks", {
+    "title": "QA每月复盘", "description": "整理当月进展",
+    "schedule_type": "monthly", "schedule_value": 15, "remind_days": 3,
+})
+check("创建月度定时任务", s == 201 and recurring.get("schedule_label") == "每月 15 日"
+      and recurring.get("remind_days") == 3 and recurring.get("enabled") is True,
+      str(recurring)[:150])
+recurring_id = recurring.get("id") if recurring else None
+s, d = req("GET", "/api/recurring-tasks")
+check("读取定时任务列表", s == 200 and any(x.get("id") == recurring_id for x in d), str(d)[:150])
+s, d = req("GET", "/api/calendar?month=2026-09")
+cal_recurring = d.get("recurring_tasks", {}).get("15", [])
+check("定时任务显示在日历", s == 200 and any(x.get("id") == recurring_id and not x.get("completed") for x in cal_recurring), str(cal_recurring)[:150])
+check("日历星期从周日正确对齐", d.get("first_weekday") == 2, str(d.get("first_weekday")))
+s, d = req("POST", f"/api/recurring-tasks/{recurring_id}/complete", {"scheduled_date": "2026-09-15"})
+check("完成本次写入历史", s == 201 and d.get("completion", {}).get("scheduled_date") == "2026-09-15"
+      and len(d.get("completions", [])) == 1, str(d)[:180])
+completion_id = d.get("completion", {}).get("id")
+s, d = req("POST", f"/api/recurring-tasks/{recurring_id}/complete", {"scheduled_date": "2026-09-15"})
+check("重复完成保持幂等", s == 200 and d.get("already_completed") is True
+      and len(d.get("completions", [])) == 1, str(d)[:180])
+s, d = req("GET", "/api/calendar?month=2026-09")
+cal_recurring = d.get("recurring_tasks", {}).get("15", [])
+check("日历同步完成状态", s == 200 and any(x.get("id") == recurring_id and x.get("completed") for x in cal_recurring), str(cal_recurring)[:150])
+s, d = req("PATCH", f"/api/recurring-tasks/{recurring_id}", {"enabled": False, "remind_days": -1})
+check("暂停定时任务并关闭提醒", s == 200 and d.get("enabled") is False and d.get("remind_days") == -1, str(d)[:150])
+s, d = req("GET", "/api/calendar?month=2026-09")
+check("暂停后不再投射到日历", s == 200 and not any(x.get("id") == recurring_id for x in d.get("recurring_tasks", {}).get("15", [])), str(d.get("recurring_tasks"))[:150])
+s, d = req("DELETE", f"/api/recurring-completions/{completion_id}")
+check("撤销完成历史", s == 200 and d.get("ok"), str(d))
+s, d = req("GET", f"/api/recurring-tasks/{recurring_id}")
+check("撤销后历史为空", s == 200 and d.get("completions") == [], str(d)[:150])
+s, d = req("POST", "/api/recurring-tasks", {"title": "QA坏规则", "schedule_type": "weekly", "schedule_value": 8})
+check("非法星期拒绝", s == 400, str(d))
+s, d = req("DELETE", f"/api/recurring-tasks/{recurring_id}")
+check("删除定时任务", s == 200 and d.get("ok"), str(d))
+s, d = req("GET", f"/api/recurring-tasks/{recurring_id}")
+check("删除后返回 404", s == 404, str(d))
+
 # ---------- 12. code-review v2.0.0 补盲用例（PATCH links 校验/due_date/闰月/theme/年份/日志日期） ----------
 section("12. code-review 补盲")
 # 12.1 PATCH /api/links URL 协议校验（🔴#1）
@@ -467,6 +570,9 @@ for l in [x for x in d if str(x["name"]).startswith("QA")]:
 s, d = req("GET", "/api/anniversaries")
 for a in [x for x in d if str(x["name"]).startswith("QA")]:
     req("DELETE", f"/api/anniversaries/{a['id']}")
+s, d = req("GET", "/api/recurring-tasks")
+for task in [x for x in d if str(x["title"]).startswith("QA")]:
+    req("DELETE", f"/api/recurring-tasks/{task['id']}")
 
 print(f"\n{'='*50}")
 print(f"RESULT: {PASS} passed, {FAIL} failed")

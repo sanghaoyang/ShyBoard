@@ -16,7 +16,8 @@ from typing import Any
 
 
 SOURCE_DIR = Path(__file__).resolve().parent
-APP_DIR = Path(os.environ.get("SHYBOARD_HOME", SOURCE_DIR.parent)).resolve()
+DEFAULT_APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else SOURCE_DIR.parent
+APP_DIR = Path(os.environ.get("SHYBOARD_HOME", DEFAULT_APP_DIR)).resolve()
 os.environ.setdefault("WORKBENCH_DB", str(APP_DIR / "data" / "workbench.db"))
 sys.path.insert(0, str(SOURCE_DIR))
 
@@ -148,6 +149,7 @@ def shyboard_create_task(
     status: str = "todo",
     priority: str = "medium",
     due_date: str = "",
+    remind_days: int = 3,
     tags: list[str] | str = "",
     external_key: str = "",
 ) -> dict[str, Any]:
@@ -166,12 +168,19 @@ def shyboard_create_task(
             datetime.strptime(due, "%Y-%m-%d")
         except ValueError as exc:
             raise ValueError("due_date 格式应为 YYYY-MM-DD") from exc
+    try:
+        reminder = int(remind_days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("remind_days 必须是 -1 到 365 之间的整数") from exc
+    if not -1 <= reminder <= 365:
+        raise ValueError("remind_days 必须是 -1 到 365 之间的整数")
     row = db.create_task(
         title=title.strip(),
         description=description.strip(),
         status=status,
         priority=priority,
         due_date=due,
+        remind_days=reminder,
         tags=(",".join(str(tag).strip() for tag in tags if str(tag).strip())
               if isinstance(tags, list) else tags.strip()),
         source="agent",
@@ -183,8 +192,8 @@ def shyboard_create_task(
 
 @mcp.tool()
 def shyboard_update_task(task_id: int, fields: dict[str, Any]) -> dict[str, Any]:
-    """Update task fields such as title, description, status, priority, due_date, tags, or external_key."""
-    allowed = {"title", "description", "status", "priority", "due_date", "tags", "project_id", "external_key"}
+    """Update task fields such as title, description, status, priority, due_date, remind_days, tags, or external_key."""
+    allowed = {"title", "description", "status", "priority", "due_date", "remind_days", "tags", "project_id", "external_key"}
     unknown = set(fields) - allowed
     if unknown:
         raise ValueError(f"不支持的字段：{', '.join(sorted(unknown))}")
@@ -198,6 +207,13 @@ def shyboard_update_task(task_id: int, fields: dict[str, Any]) -> dict[str, Any]
             datetime.strptime(str(fields["due_date"]), "%Y-%m-%d")
         except ValueError as exc:
             raise ValueError("due_date 格式应为 YYYY-MM-DD") from exc
+    if "remind_days" in fields:
+        try:
+            fields["remind_days"] = int(fields["remind_days"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("remind_days 必须是 -1 到 365 之间的整数") from exc
+        if not -1 <= fields["remind_days"] <= 365:
+            raise ValueError("remind_days 必须是 -1 到 365 之间的整数")
     if "tags" in fields and isinstance(fields["tags"], list):
         fields = {**fields, "tags": ",".join(str(tag).strip() for tag in fields["tags"] if str(tag).strip())}
     row = db.update_task(task_id, **fields)

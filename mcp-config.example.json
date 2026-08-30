@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "shyboard": {
-      "command": "cmd.exe",
-      "args": [
-        "/d",
-        "/c",
-        "E:\\tools\\ShyBoard\\source\\run_mcp.bat"
-      ]
+      "command": "<ShyBoard 安装目录>\\ShyBoard-MCP.exe",
+      "args": []
     }
   }
 }
