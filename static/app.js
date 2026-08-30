@@ -1085,7 +1085,7 @@ function openAnnModal(fromDay = false) {
   }
   $("#modal-body").innerHTML = `
     <label>名称</label>
-    <input id="a-name" placeholder="例如：老妈生日" maxlength="30">
+    <input id="a-name" placeholder="例如：结婚纪念日" maxlength="30">
     ${datePart}
     <label>日历类型</label>
     <div style="display:flex;gap:8px" id="a-type-row">
