@@ -6,11 +6,10 @@ import sqlite3
 import sys
 from datetime import datetime
 
-if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+import paths as app_paths
+
+BASE_DIR = str(app_paths.install_dir())
+DATA_DIR = str(app_paths.get_data_dir(BASE_DIR))
 DB_PATH = os.environ.get("WORKBENCH_DB", os.path.join(DATA_DIR, "workbench.db"))
 
 DEFAULT_SETTINGS = {

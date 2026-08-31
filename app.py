@@ -23,11 +23,10 @@ import threading
 import time
 import urllib.request
 
-if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+import paths as app_paths
+
+BASE_DIR = str(app_paths.install_dir())
+DATA_DIR = str(app_paths.get_data_dir(BASE_DIR))
 PORT_FILE = os.path.join(DATA_DIR, "port.txt")
 WEBVIEW_DIR = os.path.join(DATA_DIR, "webview")
 
@@ -48,6 +47,14 @@ PLACEHOLDER_HTML = (
     "font-family:Segoe UI,sans-serif;color:#C4A0A8;font-size:16px'>"
     "工作台</body>"
 )
+
+
+def _set_data_dir(path):
+    """Refresh paths after a deferred data migration completes at startup."""
+    global DATA_DIR, PORT_FILE, WEBVIEW_DIR
+    DATA_DIR = os.path.abspath(str(path))
+    PORT_FILE = os.path.join(DATA_DIR, "port.txt")
+    WEBVIEW_DIR = os.path.join(DATA_DIR, "webview")
 
 
 def _unblock_bundled_runtime(base_dir=None):
@@ -228,6 +235,29 @@ def _boot_and_goto(window, port):
 def _run_window(port):
     import webview
 
+    class DesktopApi:
+        def __init__(self):
+            self.window = None
+
+        def get_data_location(self):
+            return app_paths.data_location_info(BASE_DIR)
+
+        def choose_data_directory(self):
+            try:
+                current = app_paths.get_data_dir(BASE_DIR)
+                chosen = self.window.create_file_dialog(
+                    webview.FOLDER_DIALOG,
+                    directory=str(current.parent),
+                )
+                if not chosen:
+                    return {"ok": False, "cancelled": True}
+                info = app_paths.prepare_data_directory(chosen[0], BASE_DIR)
+                return {"ok": True, **info}
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+
+    desktop_api = DesktopApi()
+
     window = webview.create_window(
         "ShyBoard",
         html=PLACEHOLDER_HTML,
@@ -235,7 +265,9 @@ def _run_window(port):
         height=780,
         min_size=(960, 640),
         background_color="#FBF7F8",
+        js_api=desktop_api,
     )
+    desktop_api.window = window
 
     # 立即并行启动服务（如未运行），与 WebView2 初始化同时进行；
     # 就绪后自动导航真实页面。不等窗口回调，缩短内容出现时间。
@@ -326,6 +358,9 @@ def _try_pending_update():
 def main():
     # Must run before importing webview/pythonnet in _run_window.
     _unblock_bundled_runtime()
+    # A directory chosen in Settings is activated only after the previous
+    # process has closed, so SQLite and WebView profile files can be copied.
+    _set_data_dir(app_paths.activate_pending_data_directory(BASE_DIR))
     _hide_console()
     _detach_if_console()
     # 自愈：确保 update.ps1 存在（旧版升级上来时补装）

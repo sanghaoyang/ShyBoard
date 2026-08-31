@@ -124,6 +124,7 @@ async function loadSettings() {
       SETTINGS.autostart = a.enabled ? "1" : "0";
       $("#set-autostart").checked = a.enabled;
     }
+    loadDataLocation();
   } catch (e) { /* 设置加载失败不阻塞 */ }
 }
 
@@ -222,14 +223,59 @@ function ensureDataTransferCard() {
   grid.insertAdjacentHTML("beforeend", `
     <section class="settings-card data-card">
       <div class="settings-card-heading"><span class="settings-card-icon">⇄</span><div>
-        <h2>数据迁移</h2><p>把完整工作台带到新电脑，或留下一份随时可恢复的备份。</p>
+        <h2>数据与存储</h2><p>选择保存位置，把完整工作台带到新电脑，或留下一份可恢复的备份。</p>
       </div></div>
+      <div class="data-location">
+        <div class="data-location-copy"><strong>当前数据目录</strong><span id="data-location-path">正在读取…</span><small id="data-location-status">数据库、游戏纪录和本地界面数据都保存在这里。</small></div>
+        <button class="btn ghost" id="data-location-choose">选择目录</button>
+      </div>
       <div class="data-transfer">
         <div class="data-transfer-copy"><strong>一个文件，保留全部内容与状态</strong><span>包含任务、进度历史、便签、快捷方式、纪念日、每日记录、定时任务及界面偏好。</span></div>
         <div class="data-transfer-actions"><button class="btn primary" id="data-export">导出数据</button><button class="btn ghost" id="data-import">导入数据</button><input id="data-import-file" type="file" accept=".json,application/json" hidden></div>
       </div>
       <p class="data-transfer-note">导入会替换当前工作台内容；开始前，ShyBoard 会自动保留一份当前数据库快照。</p>
     </section>`);
+}
+
+async function loadDataLocation() {
+  const path = $("#data-location-path");
+  const status = $("#data-location-status");
+  const button = $("#data-location-choose");
+  if (!path || !status || !button) return;
+  const bridge = window.pywebview?.api;
+  if (!bridge?.get_data_location) {
+    path.textContent = "仅桌面版支持选择目录";
+    button.disabled = true;
+    return;
+  }
+  try {
+    const info = await bridge.get_data_location();
+    path.textContent = info.path;
+    status.textContent = info.restart_required
+      ? `已选择 ${info.pending_path}，完全退出并重新打开 ShyBoard 后迁移；原目录会保留。`
+      : (info.migration_error ? `上次迁移未完成：${info.migration_error}` : "数据库、游戏纪录和本地界面数据都保存在这里。");
+    button.textContent = info.restart_required ? "重新选择" : "选择目录";
+  } catch (error) {
+    status.textContent = `无法读取目录：${error}`;
+  }
+}
+
+async function chooseDataLocation() {
+  const bridge = window.pywebview?.api;
+  if (!bridge?.choose_data_directory) return;
+  const button = $("#data-location-choose");
+  button.disabled = true;
+  try {
+    const result = await bridge.choose_data_directory();
+    if (result?.cancelled) return;
+    if (!result?.ok) throw new Error(result?.error || "无法设置数据目录");
+    await loadDataLocation();
+    toast("目录已记下，请完全退出并重新打开 ShyBoard 完成迁移");
+  } catch (error) {
+    toast(error.message || String(error));
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function backupFilename() {
@@ -299,6 +345,8 @@ async function importDataFile(file) {
 }
 
 ensureDataTransferCard();
+window.addEventListener("pywebviewready", loadDataLocation);
+$("#data-location-choose").addEventListener("click", chooseDataLocation);
 $("#data-export").addEventListener("click", exportData);
 $("#data-import").addEventListener("click", () => $("#data-import-file").click());
 $("#data-import-file").addEventListener("change", (event) => {

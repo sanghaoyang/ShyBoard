@@ -2,7 +2,7 @@
 
 ShyBoard 是一个面向 Windows 的本地个人工作台，把任务、进度记录、日历、日记、便签和常用链接放在同一个桌面应用里。
 
-它不需要注册账号，主要数据保存在应用目录内的 SQLite 数据库中。整个便携目录可以直接复制、压缩和迁移。
+它不需要注册账号，数据默认保存在应用目录中，也可以在设置里选择其他本地目录。
 
 ## 当前功能
 
@@ -19,6 +19,7 @@ ShyBoard 是一个面向 Windows 的本地个人工作台，把任务、进度�
 - 跨设备可运行：首启与更新安装都会清除下载包传播到 DLL 的 MOTW 标记，避免 CLR 拒绝加载 Python.Runtime.dll
 - 定时任务：每周/每月重复规则、提前提醒、日历投射和完成历史
 - 数据迁移：一键导出完整备份，并在另一套 ShyBoard 环境中恢复
+- 自定义存储：设置页可选择数据目录，重启时复制数据库、游戏纪录和 WebView 本地数据；旧目录不会自动删除
 - 独立设置页面
 - Agent 接入：标准 MCP Bridge 和本地 REST API
 
@@ -34,7 +35,7 @@ ShyBoard 是一个面向 Windows 的本地个人工作台，把任务、进度�
 2. 双击 `ShyBoard.exe` 启动桌面工作台。
 3. 首次使用 Agent 时，打开左侧“AI 接入”，复制安装提示词交给你的 Agent；如果只使用桌面功能，可以跳过这一步。
 
-便携目录可以直接移动到另一台 Windows 电脑。升级时替换程序文件即可，`data/` 目录应当保留。
+便携目录可以直接移动到另一台 Windows 电脑。升级时替换程序文件即可，默认的 `data/` 或自定义数据目录应当保留。
 
 ## 自动更新
 
@@ -57,7 +58,7 @@ ShyBoard 是一个面向 Windows 的本地个人工作台，把任务、进度�
 ShyBoard/
 ├── ShyBoard.exe
 ├── _internal/
-├── data/                 # 首次运行后生成，用于保存本机数据
+├── data/                 # 默认数据目录；可在设置中改到其他位置
 ├── ShyBoard-MCP.exe
 └── update.ps1
 ```
@@ -66,11 +67,13 @@ ShyBoard/
 
 不要只复制 `ShyBoard.exe`。程序运行还需要同目录下的 `_internal` 等文件。如果要放到桌面，请为 `ShyBoard.exe` 创建快捷方式，或把整个目录一起复制过去。
 
-个人数据保存在：
+默认数据保存在：
 
 ```text
 data/workbench.db
 ```
+
+设置页“数据与存储”可以选择其他目录。选择后需完全退出并重新打开 ShyBoard；程序会在启动早期复制 SQLite 数据库、备份、游戏排行榜所在的 WebView 本地存储及更新状态，然后切换到新目录。为防止误删，旧目录会原样保留，确认新目录工作正常后可自行处理。安装目录中的 `data-location.json` 只记录当前目录指针，不包含个人内容。
 
 备份或迁移有两种方式：
 
@@ -130,7 +133,7 @@ shyboard_link_project
 
 `record_id` 可用于幂等写入，防止 Agent 重试时生成重复进度；`agent_id` 和 `run_id` 可用于区分 Agent 与会话来源。
 
-MCP Bridge 使用 stdio 与 Agent 通信，最终仍然读写 ShyBoard 的本地 `data/workbench.db`。桌面界面、MCP 和 REST API 看到的是同一份数据。
+MCP Bridge 使用 stdio 与 Agent 通信，最终仍然读写 ShyBoard 当前数据目录中的 `workbench.db`。桌面界面、MCP 和 REST API 看到的是同一份数据。
 
 更完整的 Agent 工作流见 [WORKFLOW.md](WORKFLOW.md)。
 
@@ -167,6 +170,8 @@ dist/ShyBoard-Portable/
 ```
 
 分发时应压缩整个 `ShyBoard-Portable` 目录，而不是单独发送 EXE。
+
+面向其他用户发布时，应使用受 Windows 信任的 RSA Authenticode 代码签名证书。把证书安装到当前用户证书存储后设置 `SHYBOARD_SIGN_THUMBPRINT` 和证书机构提供的 `SHYBOARD_TIMESTAMP_URL`；发布 CI 还应设置 `SHYBOARD_REQUIRE_SIGNING=1`。构建脚本会签名并验证便携目录中的 EXE、DLL 和 PYD，未配置证书的本机构建仍可用于开发，但不适合作为公开发布包。
 
 ## 测试
 

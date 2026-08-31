@@ -684,6 +684,12 @@ body[data-theme="dark"] .settings-list { background: rgba(0,0,0,.08); }
 .settings-list .set-row { min-height: 62px; padding: 11px 2px; }
 .settings-list .set-name { font-size: calc(14px + var(--font-bump)); }
 .settings-list .set-desc { font-size: calc(12px + var(--font-bump)); }
+.data-location { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 11px; padding: 14px 17px; border: 1px solid rgba(var(--ink-rgb),.09); border-radius: 13px; background: rgba(var(--base-rgb),.48); }
+.data-location-copy { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 4px; }
+.data-location-copy strong { color: var(--heading); font-size: calc(12.5px + var(--font-bump)); font-weight: 640; }
+.data-location-copy span { overflow: hidden; color: var(--primary-deep); font-family: var(--font-numeric); font-size: calc(10px + var(--font-bump)); text-overflow: ellipsis; white-space: nowrap; }
+.data-location-copy small { color: var(--text-dim); font-size: calc(9.5px + var(--font-bump)); line-height: 1.5; }
+.data-location .btn { flex: 0 0 auto; min-width: 94px; }
 .data-transfer { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 17px; border: 1px solid rgba(var(--ink-rgb),.075); border-radius: 13px; background: linear-gradient(135deg, rgba(var(--base-rgb),.7), rgba(var(--accent-rgb),.045)); }
 .data-transfer-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .data-transfer-copy strong { color: var(--heading); font-size: calc(12.5px + var(--font-bump)); font-weight: 640; }
@@ -830,6 +836,8 @@ body[data-theme="dark"] .modal input[type="date"] { color-scheme: dark; }
   .font-size-setting { align-items: stretch; flex-direction: column; }
   .font-size-picker { width: 100%; }
   .data-transfer { align-items: stretch; flex-direction: column; gap: 13px; }
+  .data-location { align-items: stretch; flex-direction: column; }
+  .data-location .btn { width: 100%; }
   .data-transfer-actions { width: 100%; }
   .data-transfer-actions .btn { flex: 1; }
   .create-task-row, .create-task-row.deadline-row { grid-template-columns: 1fr; gap: 0; }

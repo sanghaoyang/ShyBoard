@@ -9,6 +9,19 @@ param(
 $ErrorActionPreference = "Stop"
 $Base = [IO.Path]::GetFullPath($PSScriptRoot)
 $Data = Join-Path $Base "data"
+$DataConfig = Join-Path $Base "data-location.json"
+if ($env:SHYBOARD_DATA_DIR) {
+    $Data = [IO.Path]::GetFullPath($env:SHYBOARD_DATA_DIR)
+} elseif (Test-Path -LiteralPath $DataConfig) {
+    try {
+        $configuredData = [string]((Get-Content -LiteralPath $DataConfig -Raw | ConvertFrom-Json).path)
+        if ($configuredData -and [IO.Path]::IsPathRooted($configuredData)) {
+            $Data = [IO.Path]::GetFullPath($configuredData)
+        }
+    } catch {
+        throw "data-location.json is invalid: $($_.Exception.Message)"
+    }
+}
 $Upd = Join-Path $Data "updates"
 $Log = Join-Path $Upd "update.log"
 $PendingFile = Join-Path $Upd "pending_update.json"

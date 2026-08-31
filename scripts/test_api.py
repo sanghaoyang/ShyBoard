@@ -352,6 +352,9 @@ check("日历记录使用后端主通道", "calendarApiRecord(d.logs, dateStr)" 
 check("设置页提供完整数据迁移", "ensureDataTransferCard" in script_text
       and 'api("/api/backup")' in script_text
       and 'api("/api/backup/import"' in script_text, script_text[:120])
+check("设置页支持选择数据目录", 'id="data-location-choose"' in script_text
+      and "choose_data_directory" in script_text
+      and "restart_required" in script_text, script_text[:120])
 s, body = req_raw("GET", "/redesign.js")
 redesign_text = body.decode("utf-8")
 check("任务标签与日期分行", 'class="task-tags"' in redesign_text

@@ -18,11 +18,10 @@ import zipfile
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
-if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+import paths as app_paths
+
+BASE_DIR = str(app_paths.install_dir())
+DATA_DIR = str(app_paths.get_data_dir(BASE_DIR))
 UPDATES_DIR = os.path.join(DATA_DIR, "updates")
 
 REPO = os.environ.get("SHYBOARD_UPDATE_REPO", "sanghaoyang/ShyBoard")

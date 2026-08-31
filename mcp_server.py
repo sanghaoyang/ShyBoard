@@ -18,8 +18,11 @@ from typing import Any
 SOURCE_DIR = Path(__file__).resolve().parent
 DEFAULT_APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else SOURCE_DIR.parent
 APP_DIR = Path(os.environ.get("SHYBOARD_HOME", DEFAULT_APP_DIR)).resolve()
-os.environ.setdefault("WORKBENCH_DB", str(APP_DIR / "data" / "workbench.db"))
 sys.path.insert(0, str(SOURCE_DIR))
+
+import paths as app_paths  # noqa: E402
+
+os.environ.setdefault("WORKBENCH_DB", str(app_paths.get_data_dir(APP_DIR) / "workbench.db"))
 
 import db  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
