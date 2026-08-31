@@ -15,6 +15,32 @@
   const state = { tasks: [], recurring: [], view: "board", mode: "active", query: "", priority: "all", due: "all", sort: "updated", editingProgressId: null };
   const taskProgressPrefix = "[TASK_PROGRESS]\n";
   const eventFieldText = { title: "标题", description: "描述", status: "状态", priority: "优先级", due_date: "截止日期", remind_days: "截止提醒", tags: "标签" };
+  let gamesLoadPromise = null;
+
+  function loadScriptOnce(source) {
+    const existing = document.querySelector(`script[data-lazy-source="${source}"]`);
+    if (existing?.dataset.loaded === "true") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const script = existing || document.createElement("script");
+      if (!existing) {
+        script.src = source;
+        script.dataset.lazySource = source;
+        document.body.appendChild(script);
+      }
+      script.addEventListener("load", () => { script.dataset.loaded = "true"; resolve(); }, { once: true });
+      script.addEventListener("error", () => reject(new Error(`无法加载 ${source}`)), { once: true });
+    });
+  }
+
+  function ensureGamesLoaded() {
+    if (typeof window.showGamesHome === "function") return Promise.resolve();
+    if (!gamesLoadPromise) {
+      gamesLoadPromise = loadScriptOnce("nonogram-engine.js")
+        .then(() => loadScriptOnce("games.js"))
+        .catch((error) => { gamesLoadPromise = null; throw error; });
+    }
+    return gamesLoadPromise;
+  }
 
   function dateKey(date = new Date()) {
     const year = date.getFullYear();
@@ -538,6 +564,7 @@
 
   function setView(view) {
     closeDetailDrawer();
+    if (state.view === "games" && view !== "games" && typeof window.leaveGamesView === "function") window.leaveGamesView();
     state.view = view;
     document.body.classList.toggle("archive-view", view === "board" && state.mode === "archive");
     syncNavigation();
@@ -545,12 +572,13 @@
     $("#today-view").classList.toggle("hidden", view !== "today");
     $("#cal-view").classList.toggle("hidden", view !== "calendar");
     $("#focus-view").classList.toggle("hidden", view !== "focus");
+    $("#games-view").classList.toggle("hidden", view !== "games");
     $("#ai-view").classList.toggle("hidden", view !== "ai");
     $("#settings-view").classList.toggle("hidden", view !== "settings");
     const boardMeta = state.mode === "archive"
       ? ["ARCHIVE", "已完成", "完成的工作，安静地收在这里。"]
       : ["ACTIVE WORK", "正在进行", "把此刻最重要的事情放在眼前。"];
-    const meta = { board: boardMeta, today: ["TIME PLAN", "计划", "今天先做什么，接下来做什么。"], calendar: ["PLANNING", "日历", "重要日期与每日记录，一目了然。"], focus: ["DEEP WORK", "专注", "留一点完整的时间，给真正重要的事。"], ai: ["AGENT CONNECTION", "AI 接入", "让你的 Agent 与 ShyBoard 保持同步。"], settings: ["PREFERENCES", "设置", "按你的习惯调整 ShyBoard。"] }[view];
+    const meta = { board: boardMeta, today: ["TIME PLAN", "计划", "今天先做什么，接下来做什么。"], calendar: ["PLANNING", "日历", "重要日期与每日记录，一目了然。"], focus: ["DEEP WORK", "专注", "留一点完整的时间，给真正重要的事。"], games: ["TAKE A BREATH", "摸鱼小馆", "玩一小局，让脑袋松一松。"], ai: ["AGENT CONNECTION", "AI 接入", "让你的 Agent 与 ShyBoard 保持同步。"], settings: ["PREFERENCES", "设置", "按你的习惯调整 ShyBoard。"] }[view];
     $("#view-eyebrow").textContent = meta[0];
     $("#view-title").textContent = meta[1];
     $("#view-subtitle").textContent = meta[2];
@@ -562,6 +590,17 @@
     updateFilterUi();
     if (view === "calendar" && typeof loadCalendar === "function") loadCalendar();
     if (view === "focus") updateFocusPage();
+    if (view === "games") {
+      if (typeof window.showGamesHome === "function") window.showGamesHome(false);
+      else {
+        $("#games-root").innerHTML = '<div class="games-loading"><span></span><p>正在准备小游戏…</p></div>';
+        ensureGamesLoaded().then(() => {
+          if (state.view === "games") window.showGamesHome?.(false);
+        }).catch((error) => {
+          $("#games-root").innerHTML = `<div class="empty-state"><strong>小游戏加载失败</strong><span>${escapeHtml(error.message)}</span></div>`;
+        });
+      }
+    }
     if (view === "ai" && typeof loadAiGuide === "function") loadAiGuide();
     if (view === "settings" && typeof loadSettings === "function") loadSettings();
   }
@@ -589,6 +628,7 @@
     $("#nav-today").addEventListener("click", () => setView("today"));
     $("#nav-calendar").addEventListener("click", () => setView("calendar"));
     $("#nav-focus").addEventListener("click", () => setView("focus"));
+    $("#nav-games").addEventListener("click", () => setView("games"));
     $("#nav-ai").addEventListener("click", () => setView("ai"));
     $("#nav-settings").addEventListener("click", () => setView("settings"));
     $$(".panel-link[data-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -727,6 +767,6 @@
   window.loadRecurringTasks = loadRecurringTasks;
   try { _tasksSig = ""; loadTasks(); } catch (_) { /* startup race is harmless */ }
   loadRecurringTasks();
-  setInterval(updateFocusPage, 500);
-  setInterval(loadRecurringTasks, 30000);
+  const schedule = window.scheduleVisibleInterval || ((callback, milliseconds) => setInterval(callback, milliseconds));
+  schedule(() => { if (state.view === "board") loadRecurringTasks(); }, 30000, { runOnResume: true });
 })();

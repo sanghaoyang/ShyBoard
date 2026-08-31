@@ -901,6 +901,60 @@ body[data-theme="dark"] #note-panel { background: linear-gradient(180deg, transp
 .ann-countdown { min-width: 27px; color: var(--text-dim); font-family: var(--font-numeric); font-size: calc(9px + var(--font-bump)); font-weight: 690; letter-spacing: .07em; text-align: right; }
 .ann-item.ann-today .ann-countdown { color: var(--primary-deep); }
 .ann-type-tag { margin-left: 5px; border: 0; border-radius: 0; color: var(--text-dim); background: transparent; font-size: calc(8px + var(--font-bump)); font-weight: 520; }
+.ann-type-switch {
+  width: min(100%, 280px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(var(--ink-rgb),.1);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg) 76%, var(--primary-soft));
+  box-shadow: inset 0 1px 2px rgba(var(--shadow-rgb),.055);
+}
+.ann-type-switch .ann-type-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: calc(12px + var(--font-bump));
+  font-weight: 610;
+  cursor: pointer;
+  transition: color .16s, background .16s, border-color .16s, box-shadow .16s, transform .16s;
+}
+.ann-type-switch .ann-type-btn:hover:not(.active) {
+  color: var(--heading);
+  background: rgba(var(--surface-rgb),.58);
+}
+.ann-type-switch .ann-type-btn.active {
+  border-color: color-mix(in srgb, var(--primary-deep) 72%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, white), var(--primary));
+  color: var(--on-primary);
+  box-shadow: 0 4px 11px rgba(var(--accent-rgb),.2), inset 0 1px 0 rgba(255,255,255,.24);
+  transform: translateY(-1px);
+}
+.ann-type-check {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(.76);
+  transition: opacity .16s, transform .16s;
+}
+.ann-type-btn.active .ann-type-check { opacity: 1; transform: scale(1); }
+.ann-type-switch .ann-type-btn:focus-visible { outline: 2px solid var(--primary-deep); outline-offset: 2px; }
 .ann-item .ann-del, .link-item .link-del, .link-item .link-edit, .note-item .note-del, .note-item .note-edit {
   width: 24px;
   height: 24px;

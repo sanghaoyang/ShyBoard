@@ -207,6 +207,10 @@ try {
     New-Item -ItemType Directory -Path $Stage | Out-Null
     New-Item -ItemType Directory -Path $Backup | Out-Null
     Expand-Archive -LiteralPath $zipPath -DestinationPath $Stage -Force
+    # Downloaded ZIPs can carry Mark-of-the-Web into extracted managed DLLs.
+    # Remove only the alternate Zone.Identifier stream before installation.
+    Get-ChildItem -LiteralPath $Stage -Recurse -File | Unblock-File -ErrorAction Stop
+    Write-Log "download zone markers removed from staged files"
 
     $srcExe = Join-Path $Stage "ShyBoard.exe"
     $srcMcp = Join-Path $Stage "ShyBoard-MCP.exe"

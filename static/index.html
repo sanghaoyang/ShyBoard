@@ -7,6 +7,7 @@
 <title>ShyBoard</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="premium.css">
+<link rel="stylesheet" href="games.css">
 </head>
 <body>
   <header id="topbar">
@@ -24,6 +25,7 @@
       <button class="nav-item" id="nav-focus" data-view="focus"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 3.5V6m0 12v2.5M3.5 12H6m12 0h2.5"></path></svg></span><span>专注</span><kbd>4</kbd></button>
       <div class="nav-divider"></div><div class="nav-label">快捷入口</div>
       <button class="nav-item" id="nav-done" data-filter="done"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="m8 12 2.5 2.5L16.5 9"></path></svg></span><span>已完成</span></button>
+      <button class="nav-item" id="nav-games" data-view="games"><span class="nav-icon"><span class="nav-game-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span></span><span>摸鱼小馆</span></button>
       <button class="nav-item" id="nav-ai" data-view="ai"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3.5 13.5 8l4.5 1.5-4.5 1.5-1.5 4.5-1.5-4.5L6 9.5 10.5 8z"></path><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"></path></svg></span><span>AI 接入</span></button>
       <button class="nav-item" id="nav-settings" data-view="settings"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19 13.5v-3l-2.2-.7a7 7 0 0 0-.7-1.6l1-2-2.2-2.1-1.9 1a7 7 0 0 0-1.7-.7L10.5 2h-3l-.7 2.3a7 7 0 0 0-1.7.7l-2-1L1 6.1l1.1 2a7 7 0 0 0-.7 1.7L-1 10.5v3l2.4.7a7 7 0 0 0 .7 1.7l-1 2L3.2 20l2-1.1a7 7 0 0 0 1.6.7l.7 2.4h3l.8-2.4a7 7 0 0 0 1.6-.7l2 1.1 2.1-2.1-1-2a7 7 0 0 0 .7-1.7z" transform="translate(2.5 0) scale(.8)"></path></svg></span><span>设置</span></button>
       <div class="nav-spacer"></div><button class="nav-footer deadline-reminder" id="deadline-reminder" type="button" title="打开计划"><span class="reminder-dot"></span><span class="reminder-copy"><strong id="deadline-reminder-text">近期没有截止提醒</strong><small id="deadline-reminder-meta">本地数据已保存</small></span></button>
@@ -37,6 +39,7 @@
       <section id="today-view" class="view-panel hidden"><div id="today-sections" class="today-sections"></div></section>
       <section id="cal-view" class="view-panel hidden"><div class="cal-head"><div><span class="eyebrow">PLANNING</span><h2 class="cal-title" id="cal-title">2026年8月</h2></div><div class="cal-actions"><button class="cal-nav" id="cal-prev" aria-label="上个月">‹</button><button class="cal-nav" id="cal-next" aria-label="下个月">›</button><button class="btn ghost sm cal-today" id="cal-today-btn">回到今天</button></div></div><div class="cal-weekdays"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="cal-grid" id="cal-grid"></div><div class="cal-legend"><span><i class="lg-dot lg-holiday"></i>节日</span><span><i class="lg-dot lg-ann"></i>纪念日</span><span><i class="lg-dot lg-recurring"></i>定时任务</span><span><i class="lg-dot lg-record"></i>每日记录</span></div></section>
       <section id="focus-view" class="view-panel hidden"><div class="focus-page"><div class="focus-orbit" id="focus-orbit"><div class="focus-orbit-inner"><span id="focus-page-time">25:00</span><small id="focus-page-phase">准备专注</small></div></div><p class="eyebrow">DEEP WORK</p><h2>留一点完整的时间，给真正重要的事。</h2><p class="focus-page-hint">设置适合自己的节奏，专注与休息都会为你计时。</p><div class="focus-duration-settings" aria-label="番茄钟时长设置"><label><span>专注</span><select id="focus-duration" aria-label="专注时长"><option value="15">15 分钟</option><option value="25" selected>25 分钟</option><option value="45">45 分钟</option><option value="60">60 分钟</option></select></label><label><span>休息</span><select id="break-duration" aria-label="休息时长"><option value="5" selected>5 分钟</option><option value="10">10 分钟</option><option value="15">15 分钟</option></select></label></div><div class="focus-page-actions"><button class="btn primary" id="focus-page-start">开始专注</button><button class="btn ghost" id="focus-page-pause" disabled>暂停</button><button class="btn ghost" id="focus-page-break">开始休息</button><button class="btn ghost focus-stop" id="focus-page-stop" disabled>结束</button></div></div></section>
+      <section id="games-view" class="view-panel hidden" aria-label="摸鱼小游戏"><div id="games-root"></div></section>
       <section id="ai-view" class="view-panel hidden">
         <div class="ai-guide">
           <section class="ai-hero">

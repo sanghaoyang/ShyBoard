@@ -50,6 +50,48 @@ PLACEHOLDER_HTML = (
 )
 
 
+def _unblock_bundled_runtime(base_dir=None):
+    """Remove Mark-of-the-Web streams before .NET/pythonnet loads assemblies.
+
+    Windows can propagate a downloaded ZIP's Zone.Identifier stream to every
+    extracted DLL. The CLR then treats Python.Runtime.dll as remote content and
+    refuses to load it. Deleting only the alternate data stream preserves the
+    file bytes and signatures while restoring normal local-assembly behavior.
+    """
+    if os.name != "nt":
+        return {"checked": 0, "unblocked": 0}
+    root = os.path.abspath(base_dir or BASE_DIR)
+    candidates = []
+    for name in ("ShyBoard.exe", "ShyBoard-MCP.exe"):
+        path = os.path.join(root, name)
+        if os.path.isfile(path):
+            candidates.append(path)
+    internal = os.path.join(root, "_internal")
+    if os.path.isdir(internal):
+        for folder, _, files in os.walk(internal):
+            for name in files:
+                if os.path.splitext(name)[1].lower() in {".dll", ".pyd", ".exe"}:
+                    candidates.append(os.path.join(folder, name))
+    try:
+        import ctypes
+        delete_file = ctypes.WinDLL("kernel32", use_last_error=True).DeleteFileW
+        delete_file.argtypes = [ctypes.c_wchar_p]
+        delete_file.restype = ctypes.c_int
+    except Exception:
+        return {"checked": len(candidates), "unblocked": 0}
+    removed = 0
+    for path in candidates:
+        try:
+            if delete_file(path + ":Zone.Identifier"):
+                removed += 1
+        except Exception:
+            # A read-only installation may not allow ADS removal. Continue so
+            # unaffected machines still launch; import webview will surface a
+            # useful error if its managed assembly remains blocked.
+            pass
+    return {"checked": len(candidates), "unblocked": removed}
+
+
 def _is_workbench(port):
     """快速探测：先 socket 确认端口在听（毫秒级），再 HTTP 确认是本应用。"""
     try:
@@ -282,6 +324,8 @@ def _try_pending_update():
 
 
 def main():
+    # Must run before importing webview/pythonnet in _run_window.
+    _unblock_bundled_runtime()
     _hide_console()
     _detach_if_console()
     # 自愈：确保 update.ps1 存在（旧版升级上来时补装）

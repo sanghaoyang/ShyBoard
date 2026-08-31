@@ -6,6 +6,37 @@ const PRIORITY_TEXT = { high: "高", medium: "中", low: "低" };
 const STATUS_TEXT = { todo: "进行中", doing: "进行中", done: "已完成" };
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 
+/* 后台不可见时彻底停掉周期任务，恢复窗口时按需立即同步一次。 */
+const _visibleIntervalJobs = new Set();
+function scheduleVisibleInterval(callback, milliseconds, { runOnResume = false } = {}) {
+  const job = {
+    timer: null,
+    start() {
+      if (this.timer || document.hidden) return;
+      this.timer = setInterval(callback, milliseconds);
+    },
+    stop() {
+      if (this.timer) clearInterval(this.timer);
+      this.timer = null;
+    },
+    callback,
+    runOnResume,
+  };
+  _visibleIntervalJobs.add(job);
+  job.start();
+  return job;
+}
+document.addEventListener("visibilitychange", () => {
+  for (const job of _visibleIntervalJobs) {
+    if (document.hidden) job.stop();
+    else {
+      if (job.runOnResume) Promise.resolve().then(job.callback).catch(() => {});
+      job.start();
+    }
+  }
+});
+window.scheduleVisibleInterval = scheduleVisibleInterval;
+
 const UI_ICON_PATHS = {
   link: '<path d="M9.5 14.5 14.5 9m-6.8 1.1 1.9-1.9a3.4 3.4 0 0 1 4.8 0l1.4 1.4a3.4 3.4 0 0 1 0 4.8l-1.9 1.9m-3.8-6.6-1.9 1.9a3.4 3.4 0 0 0 0 4.8l1.4 1.4a3.4 3.4 0 0 0 4.8 0l1.9-1.9"/>',
   note: '<path d="M6 3.5h9.5L19 7v13.5H6z"/><path d="M15.5 3.5V7H19M9 11h7m-7 3h7m-7 3h4"/>',
@@ -284,7 +315,7 @@ function tickClock() {
   $("#clock").textContent =
     `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 }
-setInterval(tickClock, 1000);
+scheduleVisibleInterval(tickClock, 1000, { runOnResume: true });
 tickClock();
 
 /* ---------- 天气 ---------- */
@@ -1088,9 +1119,9 @@ function openAnnModal(fromDay = false) {
     <input id="a-name" placeholder="例如：结婚纪念日" maxlength="30">
     ${datePart}
     <label>日历类型</label>
-    <div style="display:flex;gap:8px" id="a-type-row">
-      <button type="button" class="btn ghost sm ann-type-btn active" data-type="solar">阳历</button>
-      <button type="button" class="btn ghost sm ann-type-btn" data-type="lunar">农历</button>
+    <div class="ann-type-switch" id="a-type-row" role="group" aria-label="日历类型">
+      <button type="button" class="ann-type-btn active" data-type="solar" aria-pressed="true"><span class="ann-type-check" aria-hidden="true">✓</span><span>阳历</span></button>
+      <button type="button" class="ann-type-btn" data-type="lunar" aria-pressed="false"><span class="ann-type-check" aria-hidden="true">✓</span><span>农历</span></button>
     </div>
     <div style="font-size:12px;color:var(--text-dim);margin-top:6px" id="a-type-hint"></div>`;
   openModal();
@@ -1115,7 +1146,11 @@ function openAnnModal(fromDay = false) {
   $("#a-type-row").onclick = (e) => {
     const btn = e.target.closest(".ann-type-btn");
     if (!btn) return;
-    document.querySelectorAll(".ann-type-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".ann-type-btn").forEach((b) => {
+      const selected = b === btn;
+      b.classList.toggle("active", selected);
+      b.setAttribute("aria-pressed", String(selected));
+    });
     updateHint();
   };
   updateHint();
@@ -1996,8 +2031,8 @@ api("/api/pomodoro").then((d) => {
 }).catch(() => {});
 
 /* 自动刷新：本地数据 15 秒轮询（有变化才重绘），天气 15 分钟 */
-setInterval(() => refreshAll(true), 15 * 1000);
-setInterval(loadWeather, 15 * 60 * 1000);
+scheduleVisibleInterval(() => refreshAll(true), 15 * 1000, { runOnResume: true });
+scheduleVisibleInterval(loadWeather, 15 * 60 * 1000, { runOnResume: true });
 
 /* 手动刷新按钮 */
 $("#btn-refresh").addEventListener("click", () => {
@@ -2085,7 +2120,7 @@ async function downloadUpdate() {
 }
 
 // 下载进度轮询（下载期间每秒刷新进度条）
-setInterval(async () => {
+scheduleVisibleInterval(async () => {
   const fill = $("#upd-fill");
   const meta = $("#upd-meta");
   if (!fill || !meta || $("#modal-title").textContent !== "正在下载更新") return;
